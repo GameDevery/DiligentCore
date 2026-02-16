@@ -591,6 +591,7 @@ GPUUploadManagerImpl::Page* GPUUploadManagerImpl::CreatePage(IDeviceContext* pCo
     }
     m_Pages.emplace(P, std::move(NewPage));
     m_PageSizeToCount[PageSize]++;
+    UpdateBucketInfo();
     m_PeakPageCount = std::max(m_PeakPageCount, static_cast<Uint32>(m_Pages.size()));
 
     return P;
@@ -760,6 +761,7 @@ void GPUUploadManagerImpl::ProcessPagesToRelease(IDeviceContext* pContext)
                 UNEXPECTED("Page size not found in the map");
             }
             m_Pages.erase(pPage);
+            UpdateBucketInfo();
         }
         else
         {
@@ -806,6 +808,15 @@ GPUUploadManagerImpl::Page* GPUUploadManagerImpl::AcquireFreePage(IDeviceContext
     return P;
 }
 
+void GPUUploadManagerImpl::UpdateBucketInfo()
+{
+    m_BucketInfo.clear();
+    for (const auto& it : m_PageSizeToCount)
+    {
+        m_BucketInfo.emplace_back(GPUUploadManagerBucketInfo{it.first, it.second});
+    }
+}
+
 void GPUUploadManagerImpl::GetStats(GPUUploadManagerStats& Stats) const
 {
     Stats.NumPages         = static_cast<Uint32>(m_Pages.size());
@@ -815,6 +826,9 @@ void GPUUploadManagerImpl::GetStats(GPUUploadManagerStats& Stats) const
 
     Stats.PeakTotalPendingUpdateSize = m_PeakTotalPendingUpdateSize;
     Stats.PeakUpdateSize             = m_PeakUpdateSize.load(std::memory_order_relaxed);
+
+    Stats.NumBuckets  = static_cast<Uint32>(m_PageSizeToCount.size());
+    Stats.pBucketInfo = m_BucketInfo.data();
 }
 
 void CreateGPUUploadManager(const GPUUploadManagerCreateInfo& CreateInfo,

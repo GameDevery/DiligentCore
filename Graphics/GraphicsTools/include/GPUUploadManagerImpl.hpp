@@ -218,6 +218,7 @@ private:
     Page* AcquireFreePage(IDeviceContext* pContext, Uint32 RequiredSize = 0);
     Page* CreatePage(IDeviceContext* pContext, Uint32 RequiredSize = 0);
     void  ProcessPagesToRelease(IDeviceContext* pContext);
+    void  UpdateBucketInfo();
 
 private:
     const Uint32 m_PageSize;
@@ -257,6 +258,7 @@ private:
 
     std::unordered_map<Page*, std::unique_ptr<Page>> m_Pages;
     std::map<Uint32, Uint32>                         m_PageSizeToCount;
+    std::vector<GPUUploadManagerBucketInfo>          m_BucketInfo;
 
     // The number of running ScheduleBufferUpdate operations.
     std::atomic<Uint32> m_NumRunningUpdates{0};

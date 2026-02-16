@@ -65,6 +65,18 @@ typedef void (*GPUUploadEnqueuedCallbackType)(IBuffer* pDstBuffer,
                                               void*    pUserData);
 
 
+/// GPU upload manager page bucket information.
+struct GPUUploadManagerBucketInfo
+{
+    /// Page size in bytes.
+    Uint32 PageSize DEFAULT_INITIALIZER(0);
+
+    /// Number of pages currently in the manager.
+    Uint32 NumPages DEFAULT_INITIALIZER(0);
+};
+typedef struct GPUUploadManagerBucketInfo GPUUploadManagerBucketInfo;
+
+
 /// GPU upload manager statistics.
 struct GPUUploadManagerStats
 {
@@ -87,6 +99,13 @@ struct GPUUploadManagerStats
 
     /// Peak size of a single update in bytes.
     Uint32 PeakUpdateSize DEFAULT_INITIALIZER(0);
+
+    /// The number of buckets in the manager. Each bucket corresponds to a specific page size.
+    Uint32 NumBuckets DEFAULT_INITIALIZER(0);
+
+    /// Information about each bucket. The array contains NumBuckets valid entries.
+    /// The pointer is valid only until the next call to GetStats() method and only while the manager is alive.
+    const GPUUploadManagerBucketInfo* pBucketInfo DEFAULT_INITIALIZER(nullptr);
 };
 typedef struct GPUUploadManagerStats GPUUploadManagerStats;
 

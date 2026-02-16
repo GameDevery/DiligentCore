@@ -45,6 +45,25 @@ using namespace std::chrono_literals;
 namespace
 {
 
+std::string PrintBucketInfo(const GPUUploadManagerStats& Stats)
+{
+    std::string Result;
+    for (Uint32 i = 0; i < Stats.NumBuckets; ++i)
+    {
+        if (!Result.empty())
+            Result.push_back('\n');
+        Result += "      ";
+        const GPUUploadManagerBucketInfo& BucketInfo = Stats.pBucketInfo[i];
+        Result += GetMemorySizeString(BucketInfo.PageSize) + ": ";
+        for (Uint32 j = 0; j < BucketInfo.NumPages; ++j)
+        {
+            Result.push_back('#');
+        }
+        Result += " " + std::to_string(BucketInfo.NumPages);
+    }
+    return Result;
+}
+
 TEST(GPUUploadManagerTest, Creation)
 {
     GPUTestingEnvironment* pEnv     = GPUTestingEnvironment::GetInstance();
@@ -233,7 +252,8 @@ TEST(GPUUploadManagerTest, ParallelUpdates)
                      "\n    NumFreePages               ", Stats.NumFreePages,
                      "\n    NumInFlightPages           ", Stats.NumInFlightPages,
                      "\n    PeakTotalPendingUpdateSize ", Stats.PeakTotalPendingUpdateSize,
-                     "\n    PeakUpdateSize             ", Stats.PeakUpdateSize);
+                     "\n    PeakUpdateSize             ", Stats.PeakUpdateSize,
+                     "\n    Buckets:\n", PrintBucketInfo(Stats));
 
     VerifyBufferContents(pBuffer, BufferData);
 }
@@ -373,7 +393,8 @@ TEST(GPUUploadManagerTest, CreateWithNullContext)
                      "\n    NumFreePages               ", Stats.NumFreePages,
                      "\n    NumInFlightPages           ", Stats.NumInFlightPages,
                      "\n    PeakTotalPendingUpdateSize ", Stats.PeakTotalPendingUpdateSize,
-                     "\n    PeakUpdateSize             ", Stats.PeakUpdateSize);
+                     "\n    PeakUpdateSize             ", Stats.PeakUpdateSize,
+                     "\n    Buckets:\n", PrintBucketInfo(Stats));
 }
 
 
@@ -455,7 +476,7 @@ TEST(GPUUploadManagerTest, MaxPageCount)
 
     GPUUploadManagerStats Stats;
     pUploadManager->GetStats(Stats);
-    LOG_INFO_MESSAGE("Peak number of pages: ", Stats.PeakNumPages);
+    LOG_INFO_MESSAGE("Peak number of pages: ", Stats.PeakNumPages, "\nBucket info:\n", PrintBucketInfo(Stats));
     EXPECT_EQ(Stats.NumPages, CreateInfo.MaxPageCount) << "Page count should not exceed the specified maximum";
 }
 
