@@ -243,11 +243,9 @@ private:
     };
     FreePages m_FreePages;
 
-    std::vector<Page*> m_NewFreePages;
-
     // Pages that have been submitted for execution and are being processed by the GPU.
     std::vector<Page*> m_InFlightPages;
-    std::vector<Page*> m_TmpInFlightPages;
+    std::vector<Page*> m_TmpPages;
 
     RefCntAutoPtr<IFence> m_pFence;
     Uint64                m_NextFenceValue = 1;

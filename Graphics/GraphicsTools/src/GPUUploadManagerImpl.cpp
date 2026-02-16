@@ -630,25 +630,29 @@ void GPUUploadManagerImpl::ReclaimCompletedPages(IDeviceContext* pContext)
 
     Uint64 CompletedFenceValue = m_pFence->GetCompletedValue();
 
-    m_TmpInFlightPages.clear();
-    m_NewFreePages.clear();
-    for (Page* P : m_InFlightPages)
+    m_TmpPages.clear();
+    size_t NewInFlightPageCount = 0;
+    for (size_t i = 0; i < m_InFlightPages.size(); ++i)
     {
+        Page* P = m_InFlightPages[i];
         if (P->GetFenceValue() <= CompletedFenceValue)
         {
             P->Reset(pContext);
-            m_NewFreePages.push_back(P);
+            m_TmpPages.push_back(P);
         }
         else
         {
-            m_TmpInFlightPages.push_back(P);
+            m_InFlightPages[NewInFlightPageCount++] = P;
         }
     }
-    m_InFlightPages.swap(m_TmpInFlightPages);
-    m_TmpInFlightPages.clear();
+    VERIFY_EXPR(NewInFlightPageCount + m_TmpPages.size() == m_InFlightPages.size());
+    m_InFlightPages.resize(NewInFlightPageCount);
 
-    m_FreePages.Push(m_NewFreePages.data(), m_NewFreePages.size());
-    m_NewFreePages.clear();
+    if (!m_TmpPages.empty())
+    {
+        m_FreePages.Push(m_TmpPages.data(), m_TmpPages.size());
+        m_TmpPages.clear();
+    }
 }
 
 void GPUUploadManagerImpl::UpdateFreePages(IDeviceContext* pContext)
@@ -670,13 +674,13 @@ void GPUUploadManagerImpl::UpdateFreePages(IDeviceContext* pContext)
 
     if (NumPagesToCreate > 0)
     {
-        m_NewFreePages.clear();
+        m_TmpPages.clear();
         for (Uint32 i = 0; i < NumPagesToCreate; ++i)
         {
-            m_NewFreePages.push_back(CreatePage(pContext));
+            m_TmpPages.push_back(CreatePage(pContext));
         }
-        m_FreePages.Push(m_NewFreePages.data(), m_NewFreePages.size());
-        m_NewFreePages.clear();
+        m_FreePages.Push(m_TmpPages.data(), m_TmpPages.size());
+        m_TmpPages.clear();
     }
 }
 
