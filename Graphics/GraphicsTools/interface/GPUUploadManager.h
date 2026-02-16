@@ -73,10 +73,6 @@ typedef struct GPUUploadManagerCreateInfo GPUUploadManagerCreateInfo;
 ///          If follow-up work is required, the callback should only enqueue work to be
 ///          processed later (e.g. push a task into a user-owned queue) and return promptly.
 ///
-/// \note The callback may be invoked even when no device context is available to record
-///       the copy; in this case it still indicates that the update request has been
-///       observed and processed by the render thread.
-///
 /// \param [in] pDstBuffer  - Destination buffer passed to ScheduleBufferUpdate().
 /// \param [in] DstOffset   - Destination offset passed to ScheduleBufferUpdate().
 /// \param [in] NumBytes    - Number of bytes passed to ScheduleBufferUpdate().

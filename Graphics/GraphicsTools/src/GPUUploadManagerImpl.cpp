@@ -426,6 +426,8 @@ GPUUploadManagerImpl::~GPUUploadManagerImpl()
 
 void GPUUploadManagerImpl::RenderThreadUpdate(IDeviceContext* pContext)
 {
+    DEV_CHECK_ERR(pContext != nullptr, "A valid context must be provided to RenderThreadUpdate");
+
     if (!m_pContext)
     {
         // If no context was provided at creation, we can accept any context in RenderThreadUpdate, but it must be the same across calls.
