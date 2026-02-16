@@ -57,8 +57,30 @@ struct GPUUploadManagerCreateInfo
 typedef struct GPUUploadManagerCreateInfo GPUUploadManagerCreateInfo;
 
 /// Callback function type for GPU upload enqueued callback.
-/// This callback is called when the GPU copy operation is scheduled for execution
-/// in the render thread.
+///
+/// This callback is invoked on the render thread when the copy command for the update
+/// has been enqueued into the device context command stream (i.e. the copy is *scheduled*,
+/// but may not have executed on the GPU yet).
+///
+/// \warning Reentrancy / thread-safety:
+///          The callback is executed from inside IGPUUploadManager::RenderThreadUpdate().
+///          The callback MUST NOT call back into the same IGPUUploadManager instance
+///          (e.g. ScheduleBufferUpdate(), RenderThreadUpdate(), GetStats()), and MUST NOT
+///          perform actions that may synchronously trigger RenderThreadUpdate() or otherwise
+///          re-enter the manager, as this may lead to deadlocks, unbounded recursion, or
+///          inconsistent internal state.
+///
+///          If follow-up work is required, the callback should only enqueue work to be
+///          processed later (e.g. push a task into a user-owned queue) and return promptly.
+///
+/// \note The callback may be invoked even when no device context is available to record
+///       the copy; in this case it still indicates that the update request has been
+///       observed and processed by the render thread.
+///
+/// \param [in] pDstBuffer  - Destination buffer passed to ScheduleBufferUpdate().
+/// \param [in] DstOffset   - Destination offset passed to ScheduleBufferUpdate().
+/// \param [in] NumBytes    - Number of bytes passed to ScheduleBufferUpdate().
+/// \param [in] pUserData   - User-provided pointer passed to ScheduleBufferUpdate().
 typedef void (*GPUUploadEnqueuedCallbackType)(IBuffer* pDstBuffer,
                                               Uint32   DstOffset,
                                               Uint32   NumBytes,
@@ -104,7 +126,9 @@ struct GPUUploadManagerStats
     Uint32 NumBuckets DEFAULT_INITIALIZER(0);
 
     /// Information about each bucket. The array contains NumBuckets valid entries.
-    /// The pointer is valid only until the next call to GetStats() method and only while the manager is alive.
+    /// The pointer is valid only until the next call to RenderThreadUpdate() or
+    /// ScheduleBufferUpdate() with a non-null device context, which may change the number
+    /// of buckets.
     const GPUUploadManagerBucketInfo* pBucketInfo DEFAULT_INITIALIZER(nullptr);
 };
 typedef struct GPUUploadManagerStats GPUUploadManagerStats;
