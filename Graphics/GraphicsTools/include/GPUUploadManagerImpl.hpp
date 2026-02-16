@@ -86,12 +86,7 @@ public:
             Writer& operator=(Writer&& Other) = delete;
             // clang-format on
 
-            bool ScheduleBufferUpdate(IBuffer*                      pDstBuffer,
-                                      Uint32                        DstOffset,
-                                      Uint32                        NumBytes,
-                                      const void*                   pSrcData,
-                                      GPUUploadEnqueuedCallbackType Callback,
-                                      void*                         pCallbackData);
+            bool ScheduleBufferUpdate(const ScheduleBufferUpdateInfo& UpdateInfo);
 
             WritingStatus EndWriting();
 
@@ -155,12 +150,7 @@ public:
     private:
         // Schedules a buffer update operation on the page.
         // Returns true if the operation was successfully scheduled, and false otherwise.
-        bool ScheduleBufferUpdate(IBuffer*                      pDstBuffer,
-                                  Uint32                        DstOffset,
-                                  Uint32                        NumBytes,
-                                  const void*                   pSrcData,
-                                  GPUUploadEnqueuedCallbackType Callback,
-                                  void*                         pCallbackData);
+        bool ScheduleBufferUpdate(const ScheduleBufferUpdateInfo& UpdateInfo);
 
         WritingStatus EndWriting();
 
@@ -187,8 +177,11 @@ public:
         {
             RefCntAutoPtr<IBuffer> pDstBuffer;
 
-            GPUUploadEnqueuedCallbackType Callback      = nullptr;
-            void*                         pCallbackData = nullptr;
+            CopyBufferCallbackType CopyBuffer      = nullptr;
+            void*                  pCopyBufferData = nullptr;
+
+            GPUUploadEnqueuedCallbackType UploadEnqueued      = nullptr;
+            void*                         pUploadEnqueuedData = nullptr;
 
             Uint32 SrcOffset = 0;
             Uint32 DstOffset = 0;

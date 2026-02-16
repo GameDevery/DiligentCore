@@ -153,6 +153,63 @@ TEST(GPUUploadManagerTest, ScheduleUpdates)
     VerifyBufferContents(pBuffer, BufferData);
 }
 
+
+TEST(GPUUploadManagerTest, ScheduleUpdatesWithCopyBufferCallback)
+{
+    GPUTestingEnvironment* pEnv     = GPUTestingEnvironment::GetInstance();
+    IRenderDevice*         pDevice  = pEnv->GetDevice();
+    IDeviceContext*        pContext = pEnv->GetDeviceContext();
+
+    GPUTestingEnvironment::ScopedReset AutoReset;
+
+    RefCntAutoPtr<IGPUUploadManager> pUploadManager;
+    GPUUploadManagerCreateInfo       CreateInfo{pDevice, pContext, 1024};
+    CreateInfo.InitialPageCount = 2;
+    CreateInfo.MaxPageCount     = 0;
+    CreateGPUUploadManager(CreateInfo, &pUploadManager);
+    ASSERT_TRUE(pUploadManager != nullptr);
+
+    std::vector<Uint8> BufferData(16384);
+    for (size_t i = 0; i < BufferData.size(); ++i)
+    {
+        BufferData[i] = static_cast<Uint8>(i % 256);
+    }
+
+    BufferDesc Desc;
+    Desc.Name      = "GPUUploadManagerTest buffer";
+    Desc.Size      = BufferData.size();
+    Desc.Usage     = USAGE_DEFAULT;
+    Desc.BindFlags = BIND_VERTEX_BUFFER;
+
+    RefCntAutoPtr<IBuffer> pBuffer;
+    pDevice->CreateBuffer(Desc, nullptr, &pBuffer);
+    ASSERT_TRUE(pBuffer);
+
+    Uint32 CurrOffset = 0;
+
+    auto GetDstBufferInfo = MakeCallback([&](IDeviceContext* pContext,
+                                             IBuffer*        pSrcBuffer,
+                                             Uint32          SrcOffset,
+                                             Uint32          NumBytes) {
+        pContext->CopyBuffer(pSrcBuffer, SrcOffset, RESOURCE_STATE_TRANSITION_MODE_TRANSITION,
+                             pBuffer, CurrOffset, NumBytes, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+        CurrOffset += NumBytes;
+    });
+
+    pUploadManager->ScheduleBufferUpdate({pContext, 256, &BufferData[0], GetDstBufferInfo, GetDstBufferInfo});
+    pUploadManager->ScheduleBufferUpdate({pContext, 256, &BufferData[256], GetDstBufferInfo, GetDstBufferInfo});
+    pUploadManager->ScheduleBufferUpdate({pContext, 1024, &BufferData[512], GetDstBufferInfo, GetDstBufferInfo});
+    pUploadManager->ScheduleBufferUpdate({pContext, 512, &BufferData[1536], GetDstBufferInfo, GetDstBufferInfo});
+    pUploadManager->ScheduleBufferUpdate({pContext, 2048, &BufferData[2048], GetDstBufferInfo, GetDstBufferInfo});
+    pUploadManager->ScheduleBufferUpdate({pContext, 4096, &BufferData[4096], GetDstBufferInfo, GetDstBufferInfo});
+    pUploadManager->ScheduleBufferUpdate({pContext, 8192, &BufferData[8192], GetDstBufferInfo, GetDstBufferInfo});
+
+    pUploadManager->RenderThreadUpdate(pContext);
+    pUploadManager->RenderThreadUpdate(pContext);
+
+    VerifyBufferContents(pBuffer, BufferData);
+}
+
 TEST(GPUUploadManagerTest, ParallelUpdates)
 {
     GPUTestingEnvironment* pEnv     = GPUTestingEnvironment::GetInstance();
@@ -179,6 +236,7 @@ TEST(GPUUploadManagerTest, ParallelUpdates)
     Desc.BindFlags = BIND_VERTEX_BUFFER;
 
     RefCntAutoPtr<IBuffer> pBuffer;
+
     pDevice->CreateBuffer(Desc, nullptr, &pBuffer);
     ASSERT_TRUE(pBuffer);
 
@@ -323,7 +381,7 @@ TEST(GPUUploadManagerTest, CreateWithNullContext)
     LOG_INFO_MESSAGE("Number of threads: ", kNumThreads);
 
     constexpr size_t kNumUpdatesPerThread = 16;
-    constexpr size_t kUpdateSize          = 2048;
+    constexpr Uint32 kUpdateSize          = 2048;
 
     std::vector<Uint8> BufferData(kNumUpdatesPerThread * kUpdateSize * kNumThreads);
     for (size_t i = 0; i < BufferData.size(); ++i)
@@ -356,7 +414,7 @@ TEST(GPUUploadManagerTest, CreateWithNullContext)
                 }
                 for (size_t i = 0; i < kNumUpdatesPerThread; ++i)
                 {
-                    Uint32 Offset = CurrOffset.fetch_add(kUpdateSize);
+                    Uint32 Offset = static_cast<Uint32>(CurrOffset.fetch_add(kUpdateSize));
                     pUploadManager->ScheduleBufferUpdate({nullptr, pBuffer, Offset, kUpdateSize, &BufferData[Offset]});
                 }
                 NumUpdatesRunning.fetch_sub(1);
@@ -418,7 +476,7 @@ TEST(GPUUploadManagerTest, MaxPageCount)
     LOG_INFO_MESSAGE("Number of threads: ", kNumThreads);
 
     constexpr size_t kNumUpdatesPerThread = 32;
-    constexpr size_t kUpdateSize          = 4096;
+    constexpr Uint32 kUpdateSize          = 4096;
 
     std::vector<Uint8> BufferData(kNumUpdatesPerThread * kUpdateSize * kNumThreads);
     for (size_t i = 0; i < BufferData.size(); ++i)

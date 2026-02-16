@@ -43,12 +43,7 @@ GPUUploadManagerImpl::Page::Writer::Writer(Writer&& Other) noexcept :
     Other.m_pPage = nullptr;
 }
 
-bool GPUUploadManagerImpl::Page::Writer::ScheduleBufferUpdate(IBuffer*                      pDstBuffer,
-                                                              Uint32                        DstOffset,
-                                                              Uint32                        NumBytes,
-                                                              const void*                   pSrcData,
-                                                              GPUUploadEnqueuedCallbackType Callback,
-                                                              void*                         pCallbackData)
+bool GPUUploadManagerImpl::Page::Writer::ScheduleBufferUpdate(const ScheduleBufferUpdateInfo& UpdateInfo)
 {
     if (m_pPage == nullptr)
     {
@@ -56,7 +51,7 @@ bool GPUUploadManagerImpl::Page::Writer::ScheduleBufferUpdate(IBuffer*          
         return false;
     }
 
-    return m_pPage->ScheduleBufferUpdate(pDstBuffer, DstOffset, NumBytes, pSrcData, Callback, pCallbackData);
+    return m_pPage->ScheduleBufferUpdate(UpdateInfo);
 }
 
 GPUUploadManagerImpl::Page::WritingStatus GPUUploadManagerImpl::Page::Writer::EndWriting()
@@ -176,12 +171,7 @@ GPUUploadManagerImpl::Page::SealStatus GPUUploadManagerImpl::Page::TrySeal()
     }
 }
 
-bool GPUUploadManagerImpl::Page::ScheduleBufferUpdate(IBuffer*                      pDstBuffer,
-                                                      Uint32                        DstOffset,
-                                                      Uint32                        NumBytes,
-                                                      const void*                   pSrcData,
-                                                      GPUUploadEnqueuedCallbackType Callback,
-                                                      void*                         pCallbackData)
+bool GPUUploadManagerImpl::Page::ScheduleBufferUpdate(const ScheduleBufferUpdateInfo& UpdateInfo)
 {
     VERIFY_EXPR(DbgGetWriterCount() > 0);
 
@@ -190,10 +180,10 @@ bool GPUUploadManagerImpl::Page::ScheduleBufferUpdate(IBuffer*                  
     // that prevents the page from being submitted for execution.
 
     Uint32 Offset = 0;
-    if (NumBytes > 0)
+    if (UpdateInfo.NumBytes > 0)
     {
         constexpr Uint32 Alignment   = 16;
-        const Uint32     AlignedSize = AlignUp(NumBytes, Alignment);
+        const Uint32     AlignedSize = AlignUp(UpdateInfo.NumBytes, Alignment);
 
         Offset = m_Offset.load(std::memory_order_acquire);
         for (;;)
@@ -208,18 +198,20 @@ bool GPUUploadManagerImpl::Page::ScheduleBufferUpdate(IBuffer*                  
 
         if (m_pData != nullptr)
         {
-            VERIFY_EXPR(pSrcData != nullptr);
-            std::memcpy(static_cast<Uint8*>(m_pData) + Offset, pSrcData, NumBytes);
+            VERIFY_EXPR(UpdateInfo.pSrcData != nullptr);
+            std::memcpy(static_cast<Uint8*>(m_pData) + Offset, UpdateInfo.pSrcData, UpdateInfo.NumBytes);
         }
     }
 
     PendingOp Op;
-    Op.pDstBuffer    = pDstBuffer;
-    Op.Callback      = Callback;
-    Op.pCallbackData = pCallbackData;
-    Op.SrcOffset     = Offset;
-    Op.DstOffset     = DstOffset;
-    Op.NumBytes      = NumBytes;
+    Op.pDstBuffer          = UpdateInfo.pDstBuffer;
+    Op.CopyBuffer          = UpdateInfo.CopyBuffer;
+    Op.pCopyBufferData     = UpdateInfo.pCopyBufferData;
+    Op.UploadEnqueued      = UpdateInfo.UploadEnqueued;
+    Op.pUploadEnqueuedData = UpdateInfo.pUploadEnqueuedData;
+    Op.SrcOffset           = Offset;
+    Op.DstOffset           = UpdateInfo.DstOffset;
+    Op.NumBytes            = UpdateInfo.NumBytes;
     m_PendingOps.Enqueue(std::move(Op));
     m_NumPendingOps.fetch_add(1, std::memory_order_acq_rel);
 
@@ -240,15 +232,22 @@ void GPUUploadManagerImpl::Page::ExecutePendingOps(IDeviceContext* pContext, Uin
 
     for (PendingOp Op; m_PendingOps.Dequeue(Op);)
     {
-        if (pContext != nullptr && Op.NumBytes > 0)
+        if (Op.CopyBuffer != nullptr)
         {
-            pContext->CopyBuffer(m_pStagingBuffer, Op.SrcOffset, RESOURCE_STATE_TRANSITION_MODE_TRANSITION,
-                                 Op.pDstBuffer, Op.DstOffset, Op.NumBytes, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+            Op.CopyBuffer(pContext, m_pStagingBuffer, Op.SrcOffset, Op.NumBytes, Op.pCopyBufferData);
         }
-
-        if (Op.Callback != nullptr)
+        else
         {
-            Op.Callback(Op.pDstBuffer, Op.DstOffset, Op.NumBytes, Op.pCallbackData);
+            if (pContext != nullptr && Op.NumBytes > 0)
+            {
+                pContext->CopyBuffer(m_pStagingBuffer, Op.SrcOffset, RESOURCE_STATE_TRANSITION_MODE_TRANSITION,
+                                     Op.pDstBuffer, Op.DstOffset, Op.NumBytes, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+            }
+
+            if (Op.UploadEnqueued != nullptr)
+            {
+                Op.UploadEnqueued(Op.pDstBuffer, Op.DstOffset, Op.NumBytes, Op.pUploadEnqueuedData);
+            }
         }
     }
     m_NumPendingOps.store(0);
@@ -548,7 +547,7 @@ void GPUUploadManagerImpl::ScheduleBufferUpdate(const ScheduleBufferUpdateInfo& 
             continue;
         }
 
-        const bool UpdateScheduled = Writer.ScheduleBufferUpdate(UpdateInfo.pDstBuffer, UpdateInfo.DstOffset, UpdateInfo.NumBytes, UpdateInfo.pSrcData, UpdateInfo.Callback, UpdateInfo.pCallbackData);
+        const bool UpdateScheduled = Writer.ScheduleBufferUpdate(UpdateInfo);
         EndWriting();
 
         if (UpdateScheduled)

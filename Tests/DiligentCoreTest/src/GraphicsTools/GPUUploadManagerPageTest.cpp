@@ -80,9 +80,9 @@ TEST(GPUUploadManagerPageTest, States)
         GPUUploadManagerImpl::Page         Page{1024};
         GPUUploadManagerImpl::Page::Writer Writer = Page.TryBeginWriting();
         EXPECT_TRUE(Writer) << "Should be able to begin writing to a new page";
-        EXPECT_TRUE(Writer.ScheduleBufferUpdate(nullptr, 0, 512, nullptr, nullptr, nullptr));
-        EXPECT_TRUE(Writer.ScheduleBufferUpdate(nullptr, 512, 512, nullptr, nullptr, nullptr));
-        EXPECT_FALSE(Writer.ScheduleBufferUpdate(nullptr, 1024, 512, nullptr, nullptr, nullptr)) << "Should not be able to schedule an update that exceeds the page size";
+        EXPECT_TRUE(Writer.ScheduleBufferUpdate({nullptr, nullptr, 0, 512, nullptr}));
+        EXPECT_TRUE(Writer.ScheduleBufferUpdate({nullptr, nullptr, 512, 512, nullptr}));
+        EXPECT_FALSE(Writer.ScheduleBufferUpdate({nullptr, nullptr, 1024, 512, nullptr})) << "Should not be able to schedule an update that exceeds the page size";
         EXPECT_EQ(Page.GetNumPendingOps(), size_t{2});
         EXPECT_TRUE(Writer.EndWriting() == GPUUploadManagerImpl::Page::WritingStatus::NotSealed) << "Page should not be sealed";
         EXPECT_EQ(Page.TrySeal(), GPUUploadManagerImpl::Page::SealStatus::Ready) << "Page with no active writers should be ready immediately";
@@ -95,12 +95,12 @@ TEST(GPUUploadManagerPageTest, States)
         GPUUploadManagerImpl::Page         Page{1024};
         GPUUploadManagerImpl::Page::Writer Writer = Page.TryBeginWriting();
         EXPECT_TRUE(Writer) << "Should be able to begin writing to a new page";
-        EXPECT_TRUE(Writer.ScheduleBufferUpdate(nullptr, 0, 512, nullptr, nullptr, nullptr));
-        EXPECT_FALSE(Writer.ScheduleBufferUpdate(nullptr, 0, 1024, nullptr, nullptr, nullptr));
-        EXPECT_TRUE(Writer.ScheduleBufferUpdate(nullptr, 0, 256, nullptr, nullptr, nullptr));
-        EXPECT_FALSE(Writer.ScheduleBufferUpdate(nullptr, 0, 512, nullptr, nullptr, nullptr));
-        EXPECT_TRUE(Writer.ScheduleBufferUpdate(nullptr, 0, 256, nullptr, nullptr, nullptr));
-        EXPECT_FALSE(Writer.ScheduleBufferUpdate(nullptr, 0, 256, nullptr, nullptr, nullptr));
+        EXPECT_TRUE(Writer.ScheduleBufferUpdate({nullptr, nullptr, 0, 512, nullptr}));
+        EXPECT_FALSE(Writer.ScheduleBufferUpdate({nullptr, nullptr, 0, 1024, nullptr}));
+        EXPECT_TRUE(Writer.ScheduleBufferUpdate({nullptr, nullptr, 0, 256, nullptr}));
+        EXPECT_FALSE(Writer.ScheduleBufferUpdate({nullptr, nullptr, 0, 512, nullptr}));
+        EXPECT_TRUE(Writer.ScheduleBufferUpdate({nullptr, nullptr, 0, 256, nullptr}));
+        EXPECT_FALSE(Writer.ScheduleBufferUpdate({nullptr, nullptr, 0, 256, nullptr}));
         EXPECT_EQ(Writer.EndWriting(), GPUUploadManagerImpl::Page::WritingStatus::NotSealed) << "Page should not be sealed";
         EXPECT_EQ(Page.TrySeal(), GPUUploadManagerImpl::Page::SealStatus::Ready) << "Page with no active writers should be ready immediately";
     }
@@ -260,7 +260,7 @@ TEST(GPUUploadManagerPageTest, ScheduleBufferUpdateParallel)
                 {
                     for (size_t i = 0; i < kNumIterations; ++i)
                     {
-                        if (Writer.ScheduleBufferUpdate(nullptr, 0, kUpdateSize, nullptr, Callback, Callback))
+                        if (Writer.ScheduleBufferUpdate({nullptr, nullptr, 0, kUpdateSize, nullptr, Callback, Callback}))
                         {
                             UpdatesScheduled.fetch_add(1);
                         }

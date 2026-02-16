@@ -83,6 +83,32 @@ typedef void (*GPUUploadEnqueuedCallbackType)(IBuffer* pDstBuffer,
                                               void*    pUserData);
 
 
+/// Callback function type for copying buffer data.
+/// This callback is invoked on the render thread when the manager needs to perform the copy operation for a buffer update.
+/// The callback is expected to perform the copy operation itself, using the provided parameters, and schedule it for execution on the GPU.
+///
+/// \param [in] pContext   - Device context to use for scheduling the copy operation.
+/// \param [in] pSrcBuffer - Source buffer containing the data to copy. The buffer is guaranteed to be valid for the duration of the callback.
+/// \param [in] SrcOffset  - Offset in the source buffer where the data to copy starts.
+/// \param [in] NumBytes   - Number of bytes to copy.
+/// \param [in] pUserData  - User-provided pointer passed to ScheduleBufferUpdate().
+///
+/// \warning Reentrancy / thread-safety:
+///          The callback is executed from inside IGPUUploadManager::RenderThreadUpdate().
+///          The callback MUST NOT call back into the same IGPUUploadManager instance
+///          (e.g. ScheduleBufferUpdate(), RenderThreadUpdate(), GetStats()), and MUST NOT
+///          perform actions that may synchronously trigger RenderThreadUpdate() or otherwise
+///          re-enter the manager, as this may lead to deadlocks, unbounded recursion, or
+///          inconsistent internal state.
+///
+///          If follow-up work is required, the callback should only enqueue work to be
+///          processed later (e.g. push a task into a user-owned queue) and return promptly.
+typedef void (*CopyBufferCallbackType)(IDeviceContext* pContext,
+                                       IBuffer*        pSrcBuffer,
+                                       Uint32          SrcOffset,
+                                       Uint32          NumBytes,
+                                       void*           pUserData);
+
 /// Structure describing a buffer update operation to be scheduled by IGPUUploadManager::ScheduleBufferUpdate().
 struct ScheduleBufferUpdateInfo
 {
@@ -91,9 +117,16 @@ struct ScheduleBufferUpdateInfo
     IDeviceContext* pContext DEFAULT_INITIALIZER(nullptr);
 
     /// Pointer to the destination buffer to update.
+    /// If CopyBuffer callback is provided, this parameter will be ignored
+    /// (though the manager will still keep a reference to the buffer until the copy operation is scheduled),
+    /// and the callback must perform the copy operation itself.
+    /// Otherwise, this buffer will be used as the destination for the copy operation
     IBuffer* pDstBuffer DEFAULT_INITIALIZER(nullptr);
 
     /// Offset in the destination buffer where the update will be applied.
+    /// If CopyBuffer callback is provided, this parameter will be ignored, and the callback must
+    /// perform the copy operation itself.
+    /// Otherwise, this offset will be used as the destination offset for the copy operation.
     Uint32 DstOffset DEFAULT_INITIALIZER(0);
 
     /// Number of bytes to copy from the source data to the destination buffer.
@@ -104,11 +137,54 @@ struct ScheduleBufferUpdateInfo
     /// parameter can be safely released or reused after the method returns.
     const void* pSrcData DEFAULT_INITIALIZER(nullptr);
 
+    /// Optional callback to perform the copy operation. If this parameter is null, the manager will perform the copy
+    /// from the source data to the destination buffer using its internal staging buffer and copy command.
+    /// If the callback is provided, it must perform the copy operation itself. The manager will pass the
+    /// necessary parameters to the callback.
+    CopyBufferCallbackType CopyBuffer DEFAULT_INITIALIZER(nullptr);
+
+    /// Optional pointer to user data that will be passed to the CopyBuffer callback.
+    void* pCopyBufferData DEFAULT_INITIALIZER(nullptr);
+
     /// Optional callback to be called when the GPU copy operation is scheduled for execution.
-    GPUUploadEnqueuedCallbackType Callback DEFAULT_INITIALIZER(nullptr);
+    /// If CopyBuffer is provided, the callback will not be called, and the CopyBuffer callback is expected
+    /// to perform any necessary follow-up actions after scheduling the copy operation.
+    GPUUploadEnqueuedCallbackType UploadEnqueued DEFAULT_INITIALIZER(nullptr);
 
     /// Optional pointer to user data that will be passed to the callback.
-    void* pCallbackData DEFAULT_INITIALIZER(nullptr);
+    void* pUploadEnqueuedData DEFAULT_INITIALIZER(nullptr);
+
+#if DILIGENT_CPP_INTERFACE
+    ScheduleBufferUpdateInfo() noexcept = default;
+
+    ScheduleBufferUpdateInfo(IDeviceContext*               _pCtx,
+                             IBuffer*                      _pDstBuf,
+                             Uint32                        _DstOffs,
+                             Uint32                        _NumBytes,
+                             const void*                   _pSrcData,
+                             GPUUploadEnqueuedCallbackType _UploadEnqueued      = nullptr,
+                             void*                         _pUploadEnqueuedData = nullptr) noexcept :
+        pContext{_pCtx},
+        pDstBuffer{_pDstBuf},
+        DstOffset{_DstOffs},
+        NumBytes{_NumBytes},
+        pSrcData{_pSrcData},
+        UploadEnqueued{_UploadEnqueued},
+        pUploadEnqueuedData{_pUploadEnqueuedData}
+    {}
+
+    ScheduleBufferUpdateInfo(IDeviceContext*        _pCtx,
+                             Uint32                 _NumBytes,
+                             const void*            _pSrcData,
+                             CopyBufferCallbackType _CopyBuffer,
+                             void*                  _pCopyBufferData = nullptr) noexcept :
+        pContext{_pCtx},
+        NumBytes{_NumBytes},
+        pSrcData{_pSrcData},
+        CopyBuffer{_CopyBuffer},
+        pCopyBufferData{_pCopyBufferData}
+    {}
+#endif
 };
 typedef struct ScheduleBufferUpdateInfo ScheduleBufferUpdateInfo;
 
