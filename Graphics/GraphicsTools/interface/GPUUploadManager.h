@@ -47,8 +47,11 @@ struct GPUUploadManagerCreateInfo
     /// it will create new ones as needed. This parameter controls how many pages are created at startup.
     Uint32 InitialPageCount DEFAULT_INITIALIZER(1);
 
-    /// Maximum number of pages that the manager is allowed to create.
-    /// 0 means no limit.
+    /// Maximum number of pages that the manager should maintain.
+    ///
+    /// Note the manager may temporarily exceed this limit in certain scenarios (for example, if large
+    /// update is scheduled while the maximum is already reached), but it will reduce the number of
+    /// pages to the maximum as soon as possible.
     Uint32 MaxPageCount DEFAULT_INITIALIZER(64);
 };
 typedef struct GPUUploadManagerCreateInfo GPUUploadManagerCreateInfo;
@@ -73,6 +76,10 @@ struct GPUUploadManagerStats
 
     /// The number of pages that are currently being used by the GPU for copy operations.
     Uint32 NumInFlightPages DEFAULT_INITIALIZER(0);
+
+    /// The peak number of pages that were created by the manager. This value can exceed the maximum page count,
+    /// but only temporarily when the manager needs to create new pages to accommodate large updates.
+    Uint32 PeakNumPages DEFAULT_INITIALIZER(0);
 
     /// The peak pending update size in bytes. This is the maximum total size of all pending buffer updates
     /// that could not be enqueued immediately due to lack of free pages.

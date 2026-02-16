@@ -376,4 +376,87 @@ TEST(GPUUploadManagerTest, CreateWithNullContext)
                      "\n    PeakUpdateSize             ", Stats.PeakUpdateSize);
 }
 
+
+TEST(GPUUploadManagerTest, MaxPageCount)
+{
+    GPUTestingEnvironment* pEnv     = GPUTestingEnvironment::GetInstance();
+    IRenderDevice*         pDevice  = pEnv->GetDevice();
+    IDeviceContext*        pContext = pEnv->GetDeviceContext();
+
+    GPUTestingEnvironment::ScopedReset AutoReset;
+
+    RefCntAutoPtr<IGPUUploadManager> pUploadManager;
+    GPUUploadManagerCreateInfo       CreateInfo{pDevice, pContext};
+    CreateInfo.PageSize         = 1024;
+    CreateInfo.InitialPageCount = 8;
+    CreateInfo.MaxPageCount     = 2;
+    CreateGPUUploadManager(CreateInfo, &pUploadManager);
+    ASSERT_TRUE(pUploadManager != nullptr);
+
+    const size_t kNumThreads = std::max(2u, std::thread::hardware_concurrency() - 1);
+    LOG_INFO_MESSAGE("Number of threads: ", kNumThreads);
+
+    constexpr size_t kNumUpdatesPerThread = 32;
+    constexpr size_t kUpdateSize          = 4096;
+
+    std::vector<Uint8> BufferData(kNumUpdatesPerThread * kUpdateSize * kNumThreads);
+    for (size_t i = 0; i < BufferData.size(); ++i)
+    {
+        BufferData[i] = static_cast<Uint8>(i % 256);
+    }
+
+    BufferDesc Desc;
+    Desc.Name      = "GPUUploadManagerTest buffer";
+    Desc.Size      = BufferData.size();
+    Desc.Usage     = USAGE_DEFAULT;
+    Desc.BindFlags = BIND_VERTEX_BUFFER;
+
+    RefCntAutoPtr<IBuffer> pBuffer;
+    pDevice->CreateBuffer(Desc, nullptr, &pBuffer);
+    ASSERT_TRUE(pBuffer);
+
+    std::vector<std::thread> Threads;
+    std::atomic<Uint32>      NumThreadsCompleted{0};
+
+    std::atomic<Uint32> CurrOffset{0};
+    for (size_t t = 0; t < kNumThreads; ++t)
+    {
+        Threads.emplace_back(
+            [&]() {
+                for (size_t i = 0; i < kNumUpdatesPerThread; ++i)
+                {
+                    Uint32 UpadateSize = kUpdateSize >> (i % 5);
+                    for (Uint32 j = 0; j < kUpdateSize / UpadateSize; ++j)
+                    {
+                        Uint32 Offset = CurrOffset.fetch_add(UpadateSize);
+                        pUploadManager->ScheduleBufferUpdate(nullptr, pBuffer, Offset, UpadateSize, &BufferData[Offset]);
+                    }
+                }
+                NumThreadsCompleted.fetch_add(1);
+            });
+    }
+
+    while (NumThreadsCompleted.load() < kNumThreads)
+    {
+        pUploadManager->RenderThreadUpdate(pContext);
+        pContext->Flush();
+        pContext->FinishFrame();
+        std::this_thread::yield();
+    }
+
+    pUploadManager->RenderThreadUpdate(pContext);
+
+    VerifyBufferContents(pBuffer, BufferData);
+
+    for (std::thread& thread : Threads)
+    {
+        thread.join();
+    }
+
+    GPUUploadManagerStats Stats;
+    pUploadManager->GetStats(Stats);
+    LOG_INFO_MESSAGE("Peak number of pages: ", Stats.PeakNumPages);
+    EXPECT_EQ(Stats.NumPages, CreateInfo.MaxPageCount) << "Page count should not exceed the specified maximum";
+}
+
 } // namespace

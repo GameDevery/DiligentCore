@@ -357,7 +357,8 @@ GPUUploadManagerImpl::Page* GPUUploadManagerImpl::FreePages::Pop(Uint32 Required
 GPUUploadManagerImpl::GPUUploadManagerImpl(IReferenceCounters* pRefCounters, const GPUUploadManagerCreateInfo& CI) :
     TBase{pRefCounters},
     m_PageSize{AlignUpToPowerOfTwo(CI.PageSize)},
-    m_MaxPageCount{CI.MaxPageCount},
+    // Ensure that the max page count is at least 2 to allow for double buffering, unless it's set to 0 which means no limit.
+    m_MaxPageCount{CI.MaxPageCount != 0 ? std::max(CI.MaxPageCount, 2u) : 0},
     m_pDevice{CI.pDevice},
     m_pContext{CI.pContext}
 {
@@ -370,7 +371,14 @@ GPUUploadManagerImpl::GPUUploadManagerImpl(IReferenceCounters* pRefCounters, con
     if (CI.pContext != nullptr)
     {
         // Create at least one page.
-        m_pCurrentPage.store(CreatePage(CI.pContext), std::memory_order_release);
+        if (Page* pPage = CreatePage(CI.pContext))
+        {
+            m_pCurrentPage.store(pPage, std::memory_order_release);
+        }
+        else
+        {
+            UNEXPECTED("Failed to create the initial page");
+        }
     }
 
     // Create additional pages if requested.
@@ -379,18 +387,25 @@ GPUUploadManagerImpl::GPUUploadManagerImpl(IReferenceCounters* pRefCounters, con
         CI.InitialPageCount;
     while (m_Pages.size() < InitialPageCount)
     {
-        Page* pPage = CreatePage(CI.pContext);
-        if (CI.pContext != nullptr)
+        if (Page* pPage = CreatePage(CI.pContext))
         {
-            // If a context is provided, we can immediately map the staging buffer and
-            // prepare the page for use, so we push it to the free list.
-            m_FreePages.Push(pPage);
+            if (CI.pContext != nullptr)
+            {
+                // If a context is provided, we can immediately map the staging buffer and
+                // prepare the page for use, so we push it to the free list.
+                m_FreePages.Push(pPage);
+            }
+            else
+            {
+                // If no context is provided, the page needs to be mapped in Reset(),
+                // so we add it to the list of in-flight pages.
+                m_InFlightPages.emplace_back(pPage);
+            }
         }
         else
         {
-            // If no context is provided, the page needs to be mapped in Reset(),
-            // so we add it to the list of in-flight pages.
-            m_InFlightPages.emplace_back(pPage);
+            UNEXPECTED("Failed to create an initial page");
+            break;
         }
     }
 }
@@ -405,9 +420,9 @@ GPUUploadManagerImpl::~GPUUploadManagerImpl()
         m_LastRunningThreadFinishedSignal.Wait();
     }
 
-    for (std::unique_ptr<Page>& P : m_Pages)
+    for (auto& it : m_Pages)
     {
-        P->ReleaseStagingBuffer(m_pContext);
+        it.second->ReleaseStagingBuffer(m_pContext);
     }
 }
 
@@ -423,10 +438,21 @@ void GPUUploadManagerImpl::RenderThreadUpdate(IDeviceContext* pContext)
         DEV_CHECK_ERR(pContext == m_pContext, "The context provided to RenderThreadUpdate must be the same as the one used to create the GPUUploadManagerImpl");
     }
 
-    SealAndSwapCurrentPage(pContext);
+    // 1. Reclaim completed pages to make them available.
     ReclaimCompletedPages(pContext);
-    UpdateFreePages(pContext);
+
+    // 2. Add free pages to accommodate pending updates.
+    AddFreePages(pContext);
+
+    // 3. Seal and swap the current page.
+    SealAndSwapCurrentPage(pContext);
+
+    // 4. Process pending pages and move them to in-fligt list.
     ProcessPendingPages(pContext);
+
+    // 5. Lastly, process pages to release. Do this at the very end so that newly available free pages
+    //    first get a chance to be used for pending updates.
+    ProcessPagesToRelease(pContext);
 
     pContext->EnqueueSignal(m_pFence, m_NextFenceValue++);
     m_PageRotatedSignal.Tick();
@@ -546,6 +572,12 @@ void GPUUploadManagerImpl::ScheduleBufferUpdate(IDeviceContext*               pC
 
 GPUUploadManagerImpl::Page* GPUUploadManagerImpl::CreatePage(IDeviceContext* pContext, Uint32 RequiredSize)
 {
+    const Uint32 MaxExistingPageSize = m_PageSizeToCount.empty() ? 0 : m_PageSizeToCount.rbegin()->first;
+    if (m_MaxPageCount != 0 && m_Pages.size() >= m_MaxPageCount && RequiredSize <= MaxExistingPageSize)
+    {
+        return nullptr;
+    }
+
     Uint32 PageSize = m_PageSize;
     while (PageSize < RequiredSize)
         PageSize *= 2;
@@ -557,7 +589,9 @@ GPUUploadManagerImpl::Page* GPUUploadManagerImpl::CreatePage(IDeviceContext* pCo
     {
         P->Reset(pContext);
     }
-    m_Pages.emplace_back(std::move(NewPage));
+    m_Pages.emplace(P, std::move(NewPage));
+    m_PageSizeToCount[PageSize]++;
+    m_PeakPageCount = std::max(m_PeakPageCount, static_cast<Uint32>(m_Pages.size()));
 
     return P;
 }
@@ -568,7 +602,6 @@ bool GPUUploadManagerImpl::SealAndSwapCurrentPage(IDeviceContext* pContext)
 
     // Get a fresh page (from free-list or allocate)
     Page* pFreshPage = AcquireFreePage(pContext);
-    VERIFY_EXPR(pFreshPage != nullptr);
 
     // Swap it in
     Page* pOld = m_pCurrentPage.exchange(pFreshPage, std::memory_order_acq_rel);
@@ -655,7 +688,7 @@ void GPUUploadManagerImpl::ReclaimCompletedPages(IDeviceContext* pContext)
     }
 }
 
-void GPUUploadManagerImpl::UpdateFreePages(IDeviceContext* pContext)
+void GPUUploadManagerImpl::AddFreePages(IDeviceContext* pContext)
 {
     VERIFY_EXPR(pContext != nullptr);
 
@@ -677,10 +710,61 @@ void GPUUploadManagerImpl::UpdateFreePages(IDeviceContext* pContext)
         m_TmpPages.clear();
         for (Uint32 i = 0; i < NumPagesToCreate; ++i)
         {
-            m_TmpPages.push_back(CreatePage(pContext));
+            if (Page* pPage = CreatePage(pContext))
+            {
+                m_TmpPages.push_back(pPage);
+            }
+            else
+            {
+                UNEXPECTED("Failed to create a new page");
+                break;
+            }
         }
         m_FreePages.Push(m_TmpPages.data(), m_TmpPages.size());
         m_TmpPages.clear();
+    }
+}
+
+void GPUUploadManagerImpl::ProcessPagesToRelease(IDeviceContext* pContext)
+{
+    if (m_MaxPageCount == 0)
+        return;
+
+    if (m_NumRunningUpdates.load(std::memory_order_acquire) > 0)
+    {
+        // Delay releasing pages until there are no running updates, to avoid ABA issue in ScheduleBufferUpdate:
+        // * T1:
+        //      Page* P = m_pCurrentPage.load(std::memory_order_acquire);
+        // * T1 gets descheduled
+        // * Render thread frees the page.
+        // * T1 resumes and crashes at
+        //      Page::Writer Writer = P->TryBeginWriting();
+        return;
+    }
+
+    VERIFY_EXPR(pContext != nullptr);
+    while (m_Pages.size() > m_MaxPageCount)
+    {
+        // Pop the smallest free page and release it until we are within the limit.
+        if (Page* pPage = m_FreePages.Pop())
+        {
+            pPage->ReleaseStagingBuffer(pContext);
+            auto it = m_PageSizeToCount.find(pPage->GetSize());
+            if (it != m_PageSizeToCount.end())
+            {
+                if (--(it->second) == 0)
+                    m_PageSizeToCount.erase(it);
+            }
+            else
+            {
+                UNEXPECTED("Page size not found in the map");
+            }
+            m_Pages.erase(pPage);
+        }
+        else
+        {
+            break; // No more free pages to remove
+        }
     }
 }
 
@@ -727,6 +811,7 @@ void GPUUploadManagerImpl::GetStats(GPUUploadManagerStats& Stats) const
     Stats.NumPages         = static_cast<Uint32>(m_Pages.size());
     Stats.NumFreePages     = static_cast<Uint32>(m_FreePages.Size());
     Stats.NumInFlightPages = static_cast<Uint32>(m_InFlightPages.size());
+    Stats.PeakNumPages     = m_PeakPageCount;
 
     Stats.PeakTotalPendingUpdateSize = m_PeakTotalPendingUpdateSize;
     Stats.PeakUpdateSize             = m_PeakUpdateSize.load(std::memory_order_relaxed);

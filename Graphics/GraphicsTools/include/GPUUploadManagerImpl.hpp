@@ -40,6 +40,7 @@
 #include <vector>
 #include <mutex>
 #include <map>
+#include <unordered_map>
 
 namespace Diligent
 {
@@ -210,12 +211,13 @@ public:
 private:
     void  ReclaimCompletedPages(IDeviceContext* pContext);
     bool  SealAndSwapCurrentPage(IDeviceContext* pContext);
-    void  UpdateFreePages(IDeviceContext* pContext);
+    void  AddFreePages(IDeviceContext* pContext);
     void  ProcessPendingPages(IDeviceContext* pContext);
     bool  TryRotatePage(IDeviceContext* pContext, Page* ExpectedCurrent, Uint32 RequiredSize);
     bool  TryEnqueuePage(Page* P);
     Page* AcquireFreePage(IDeviceContext* pContext, Uint32 RequiredSize = 0);
     Page* CreatePage(IDeviceContext* pContext, Uint32 RequiredSize = 0);
+    void  ProcessPagesToRelease(IDeviceContext* pContext);
 
 private:
     const Uint32 m_PageSize;
@@ -253,7 +255,8 @@ private:
     std::atomic<Page*>    m_pCurrentPage{nullptr};
     Threading::TickSignal m_PageRotatedSignal;
 
-    std::vector<std::unique_ptr<Page>> m_Pages;
+    std::unordered_map<Page*, std::unique_ptr<Page>> m_Pages;
+    std::map<Uint32, Uint32>                         m_PageSizeToCount;
 
     // The number of running ScheduleBufferUpdate operations.
     std::atomic<Uint32> m_NumRunningUpdates{0};
@@ -265,6 +268,7 @@ private:
 
     std::atomic<Uint32> m_PeakUpdateSize{0};
     Uint32              m_PeakTotalPendingUpdateSize = 0;
+    Uint32              m_PeakPageCount              = 0;
 };
 
 } // namespace Diligent
