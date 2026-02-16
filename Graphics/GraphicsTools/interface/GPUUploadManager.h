@@ -83,6 +83,36 @@ typedef void (*GPUUploadEnqueuedCallbackType)(IBuffer* pDstBuffer,
                                               void*    pUserData);
 
 
+/// Structure describing a buffer update operation to be scheduled by IGPUUploadManager::ScheduleBufferUpdate().
+struct ScheduleBufferUpdateInfo
+{
+    /// If calling ScheduleBufferUpdate() from the render thread, a pointer to the device context.
+    /// If calling ScheduleBufferUpdate() from a worker thread, this parameter must be null.
+    IDeviceContext* pContext DEFAULT_INITIALIZER(nullptr);
+
+    /// Pointer to the destination buffer to update.
+    IBuffer* pDstBuffer DEFAULT_INITIALIZER(nullptr);
+
+    /// Offset in the destination buffer where the update will be applied.
+    Uint32 DstOffset DEFAULT_INITIALIZER(0);
+
+    /// Number of bytes to copy from the source data to the destination buffer.
+    Uint32 NumBytes DEFAULT_INITIALIZER(0);
+
+    /// Pointer to the source data to copy to the destination buffer.
+    /// The manager makes an internal copy of the source data, so the memory pointed to by this
+    /// parameter can be safely released or reused after the method returns.
+    const void* pSrcData DEFAULT_INITIALIZER(nullptr);
+
+    /// Optional callback to be called when the GPU copy operation is scheduled for execution.
+    GPUUploadEnqueuedCallbackType Callback DEFAULT_INITIALIZER(nullptr);
+
+    /// Optional pointer to user data that will be passed to the callback.
+    void* pCallbackData DEFAULT_INITIALIZER(nullptr);
+};
+typedef struct ScheduleBufferUpdateInfo ScheduleBufferUpdateInfo;
+
+
 /// GPU upload manager page bucket information.
 struct GPUUploadManagerBucketInfo
 {
@@ -153,14 +183,7 @@ DILIGENT_BEGIN_INTERFACE(IGPUUploadManager, IObject)
 
     /// Schedules an asynchronous buffer update operation.
     ///
-    /// \param [in] pContext      - If calling the method from the render thread, a pointer to the device context.
-    ///                             If calling the method from a worker thread, this parameter must be null.
-    /// \param [in] pDstBuffer    - Pointer to the destination buffer.
-    /// \param [in] DstOffset     - Offset in the destination buffer.
-    /// \param [in] NumBytes      - Number of bytes to copy.
-    /// \param [in] pSrcData      - Pointer to the source data.
-    /// \param [in] Callback      - Optional callback to be called when the GPU copy operation is scheduled for execution.
-    /// \param [in] pCallbackData - Optional pointer to user data that will be passed to the callback.
+    /// \param [in] UpdateInfo - Structure describing the buffer update operation. See ScheduleBufferUpdateInfo for details.
     ///
     /// The method is thread-safe and can be called from multiple threads simultaneously with other calls to ScheduleBufferUpdate()
     /// and RenderThreadUpdate().
@@ -172,13 +195,7 @@ DILIGENT_BEGIN_INTERFACE(IGPUUploadManager, IObject)
     /// If the method is called from the render thread, the pContext parameter must be a pointer to the device context used to create the
     /// GPU upload manager. If the method is called from the render thread with null pContext, it may never return.
     VIRTUAL void METHOD(ScheduleBufferUpdate)(THIS_
-                                              IDeviceContext*               pContext,
-                                              IBuffer*                      pDstBuffer,
-                                              Uint32                        DstOffset,
-                                              Uint32                        NumBytes,
-                                              const void*                   pSrcData,
-                                              GPUUploadEnqueuedCallbackType Callback      DEFAULT_VALUE(nullptr),
-                                              void*                         pCallbackData DEFAULT_VALUE(nullptr)) PURE;
+                                              const ScheduleBufferUpdateInfo REF UpdateInfo) PURE;
 
     /// Retrieves GPU upload manager statistics.
     ///

@@ -56,13 +56,7 @@ public:
 
     virtual void DILIGENT_CALL_TYPE RenderThreadUpdate(IDeviceContext* pContext) override final;
 
-    virtual void DILIGENT_CALL_TYPE ScheduleBufferUpdate(IDeviceContext*               pContext,
-                                                         IBuffer*                      pDstBuffer,
-                                                         Uint32                        DstOffset,
-                                                         Uint32                        NumBytes,
-                                                         const void*                   pSrcData,
-                                                         GPUUploadEnqueuedCallbackType Callback,
-                                                         void*                         pCallbackData) override final;
+    virtual void DILIGENT_CALL_TYPE ScheduleBufferUpdate(const ScheduleBufferUpdateInfo& UpdateInfo) override final;
 
     virtual void DILIGENT_CALL_TYPE GetStats(GPUUploadManagerStats& Stats) const override final;
 

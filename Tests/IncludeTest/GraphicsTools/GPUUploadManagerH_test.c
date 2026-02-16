@@ -37,7 +37,9 @@ void TestRenderStateCacheCInterface()
     Diligent_CreateGPUUploadManager(&CI, &pMgr);
 
     IGPUUploadManager_RenderThreadUpdate(pMgr, NULL);
-    IGPUUploadManager_ScheduleBufferUpdate(pMgr, NULL, NULL, 0, 0, NULL, NULL, NULL);
+    ScheduleBufferUpdateInfo UpdateInfo;
+    memset(&UpdateInfo, 0, sizeof(UpdateInfo));
+    IGPUUploadManager_ScheduleBufferUpdate(pMgr, &UpdateInfo);
 
     GPUUploadManagerStats Stats;
     IGPUUploadManager_GetStats(pMgr, &Stats);

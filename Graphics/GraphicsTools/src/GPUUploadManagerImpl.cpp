@@ -458,16 +458,10 @@ void GPUUploadManagerImpl::RenderThreadUpdate(IDeviceContext* pContext)
     m_PageRotatedSignal.Tick();
 }
 
-void GPUUploadManagerImpl::ScheduleBufferUpdate(IDeviceContext*               pContext,
-                                                IBuffer*                      pDstBuffer,
-                                                Uint32                        DstOffset,
-                                                Uint32                        NumBytes,
-                                                const void*                   pSrcData,
-                                                GPUUploadEnqueuedCallbackType Callback,
-                                                void*                         pCallbackData)
+void GPUUploadManagerImpl::ScheduleBufferUpdate(const ScheduleBufferUpdateInfo& UpdateInfo)
 
 {
-    DEV_CHECK_ERR(pContext == nullptr || pContext == m_pContext,
+    DEV_CHECK_ERR(UpdateInfo.pContext == nullptr || UpdateInfo.pContext == m_pContext,
                   "If a context is provided to ScheduleBufferUpdate, it must be the same as the one used to create the GPUUploadManagerImpl");
 
     class RunningUpdatesGuard
@@ -499,13 +493,13 @@ void GPUUploadManagerImpl::ScheduleBufferUpdate(IDeviceContext*               pC
 
     auto UpdatePendingSizeAndTryRotate = [&](Page* P) {
         Uint64 PageEpoch = m_PageRotatedSignal.CurrentEpoch();
-        if (!TryRotatePage(pContext, P, NumBytes))
+        if (!TryRotatePage(UpdateInfo.pContext, P, UpdateInfo.NumBytes))
         {
             // Atomically update the max pending update size to ensure the next page is large enough
-            AtomicMax(m_MaxPendingUpdateSize, NumBytes, std::memory_order_acq_rel);
+            AtomicMax(m_MaxPendingUpdateSize, UpdateInfo.NumBytes, std::memory_order_acq_rel);
             if (IsFirstAttempt)
             {
-                m_TotalPendingUpdateSize.fetch_add(NumBytes, std::memory_order_acq_rel);
+                m_TotalPendingUpdateSize.fetch_add(UpdateInfo.NumBytes, std::memory_order_acq_rel);
                 IsFirstAttempt = false;
             }
             AbortUpdate = m_PageRotatedSignal.WaitNext(PageEpoch) == 0;
@@ -554,7 +548,7 @@ void GPUUploadManagerImpl::ScheduleBufferUpdate(IDeviceContext*               pC
             continue;
         }
 
-        const bool UpdateScheduled = Writer.ScheduleBufferUpdate(pDstBuffer, DstOffset, NumBytes, pSrcData, Callback, pCallbackData);
+        const bool UpdateScheduled = Writer.ScheduleBufferUpdate(UpdateInfo.pDstBuffer, UpdateInfo.DstOffset, UpdateInfo.NumBytes, UpdateInfo.pSrcData, UpdateInfo.Callback, UpdateInfo.pCallbackData);
         EndWriting();
 
         if (UpdateScheduled)
@@ -567,7 +561,7 @@ void GPUUploadManagerImpl::ScheduleBufferUpdate(IDeviceContext*               pC
         }
     }
 
-    AtomicMax(m_PeakUpdateSize, NumBytes, std::memory_order_relaxed);
+    AtomicMax(m_PeakUpdateSize, UpdateInfo.NumBytes, std::memory_order_relaxed);
 }
 
 GPUUploadManagerImpl::Page* GPUUploadManagerImpl::CreatePage(IDeviceContext* pContext, Uint32 RequiredSize)

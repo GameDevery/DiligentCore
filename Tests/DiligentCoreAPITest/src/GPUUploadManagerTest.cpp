@@ -141,12 +141,12 @@ TEST(GPUUploadManagerTest, ScheduleUpdates)
     pDevice->CreateBuffer(Desc, nullptr, &pBuffer);
     ASSERT_TRUE(pBuffer);
 
-    pUploadManager->ScheduleBufferUpdate(pContext, pBuffer, 0, 0, nullptr);
-    pUploadManager->ScheduleBufferUpdate(pContext, pBuffer, 0, 256, &BufferData[0]);
-    pUploadManager->ScheduleBufferUpdate(pContext, pBuffer, 256, 256, &BufferData[256]);
-    pUploadManager->ScheduleBufferUpdate(pContext, pBuffer, 512, 1024, &BufferData[512]);
-    pUploadManager->ScheduleBufferUpdate(pContext, pBuffer, 1536, 512, &BufferData[1536]);
-    pUploadManager->ScheduleBufferUpdate(pContext, pBuffer, 2048, 2048, &BufferData[2048]);
+    pUploadManager->ScheduleBufferUpdate({pContext, pBuffer, 0, 0, nullptr});
+    pUploadManager->ScheduleBufferUpdate({pContext, pBuffer, 0, 256, &BufferData[0]});
+    pUploadManager->ScheduleBufferUpdate({pContext, pBuffer, 256, 256, &BufferData[256]});
+    pUploadManager->ScheduleBufferUpdate({pContext, pBuffer, 512, 1024, &BufferData[512]});
+    pUploadManager->ScheduleBufferUpdate({pContext, pBuffer, 1536, 512, &BufferData[1536]});
+    pUploadManager->ScheduleBufferUpdate({pContext, pBuffer, 2048, 2048, &BufferData[2048]});
     pUploadManager->RenderThreadUpdate(pContext);
     pUploadManager->RenderThreadUpdate(pContext);
 
@@ -201,7 +201,7 @@ TEST(GPUUploadManagerTest, ParallelUpdates)
                     Uint32 Offset = CurrOffset.fetch_add(UpdateSize);
                     if (Offset >= BufferData.size())
                         break;
-                    pUploadManager->ScheduleBufferUpdate(nullptr, pBuffer, Offset, UpdateSize, &BufferData[Offset]);
+                    pUploadManager->ScheduleBufferUpdate({nullptr, pBuffer, Offset, UpdateSize, &BufferData[Offset]});
                     NumUpdatesScheduled.fetch_add(1);
                 }
                 NumThreadsCompleted.fetch_add(1);
@@ -284,7 +284,7 @@ TEST(GPUUploadManagerTest, DestroyWhileUpdatesAreRunning)
                 {
                     AllThreadsRunningSignal.Trigger();
                 }
-                pUploadManager->ScheduleBufferUpdate(nullptr, nullptr, 0, 2048, nullptr);
+                pUploadManager->ScheduleBufferUpdate({nullptr, nullptr, 0, 2048, nullptr});
                 NumUpdatesRunning.fetch_sub(1);
             });
     }
@@ -357,7 +357,7 @@ TEST(GPUUploadManagerTest, CreateWithNullContext)
                 for (size_t i = 0; i < kNumUpdatesPerThread; ++i)
                 {
                     Uint32 Offset = CurrOffset.fetch_add(kUpdateSize);
-                    pUploadManager->ScheduleBufferUpdate(nullptr, pBuffer, Offset, kUpdateSize, &BufferData[Offset]);
+                    pUploadManager->ScheduleBufferUpdate({nullptr, pBuffer, Offset, kUpdateSize, &BufferData[Offset]});
                 }
                 NumUpdatesRunning.fetch_sub(1);
             });
@@ -450,7 +450,7 @@ TEST(GPUUploadManagerTest, MaxPageCount)
                     for (Uint32 j = 0; j < kUpdateSize / UpadateSize; ++j)
                     {
                         Uint32 Offset = CurrOffset.fetch_add(UpadateSize);
-                        pUploadManager->ScheduleBufferUpdate(nullptr, pBuffer, Offset, UpadateSize, &BufferData[Offset]);
+                        pUploadManager->ScheduleBufferUpdate({nullptr, pBuffer, Offset, UpadateSize, &BufferData[Offset]});
                     }
                 }
                 NumThreadsCompleted.fetch_add(1);
