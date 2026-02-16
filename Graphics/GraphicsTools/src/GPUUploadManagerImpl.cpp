@@ -92,9 +92,7 @@ inline bool PersistentMapSupported(IRenderDevice* pDevice)
     return DeviceType == RENDER_DEVICE_TYPE_D3D12 || DeviceType == RENDER_DEVICE_TYPE_VULKAN;
 }
 
-GPUUploadManagerImpl::Page::Page(IRenderDevice*  pDevice,
-                                 IDeviceContext* pContext,
-                                 Uint32          Size) :
+GPUUploadManagerImpl::Page::Page(IRenderDevice* pDevice, Uint32 Size) :
     Page{
         Size,
         PersistentMapSupported(pDevice),
@@ -582,7 +580,7 @@ GPUUploadManagerImpl::Page* GPUUploadManagerImpl::CreatePage(IDeviceContext* pCo
     while (PageSize < RequiredSize)
         PageSize *= 2;
 
-    std::unique_ptr<Page> NewPage = std::make_unique<Page>(m_pDevice, pContext, PageSize);
+    std::unique_ptr<Page> NewPage = std::make_unique<Page>(m_pDevice, PageSize);
 
     Page* P = NewPage.get();
     if (pContext != nullptr)
