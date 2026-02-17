@@ -62,6 +62,10 @@ typedef struct GPUUploadManagerCreateInfo GPUUploadManagerCreateInfo;
 /// has been enqueued into the device context command stream (i.e. the copy is *scheduled*,
 /// but may not have executed on the GPU yet).
 ///
+/// If the copy operation has not been scheduled by the time the manager is destroyed,
+/// the callback will be invoked with a null buffer pointer, allowing the application
+/// to clean up any resources associated with the copy operation.
+///
 /// \warning Reentrancy / thread-safety:
 ///          The callback is executed from inside IGPUUploadManager::RenderThreadUpdate().
 ///          The callback MUST NOT call back into the same IGPUUploadManager instance
@@ -92,6 +96,10 @@ typedef void (*GPUUploadEnqueuedCallbackType)(IBuffer* pDstBuffer,
 /// \param [in] SrcOffset  - Offset in the source buffer where the data to copy starts.
 /// \param [in] NumBytes   - Number of bytes to copy.
 /// \param [in] pUserData  - User-provided pointer passed to ScheduleBufferUpdate().
+///
+/// If the copy operation was not scheduled by the time the manager is destroyed,
+/// the callback will be called with a null device context pointer so that the application
+/// can clean up any resources associated with the copy operation.
 ///
 /// \warning Reentrancy / thread-safety:
 ///          The callback is executed from inside IGPUUploadManager::RenderThreadUpdate().

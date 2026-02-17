@@ -210,6 +210,63 @@ TEST(GPUUploadManagerTest, ScheduleUpdatesWithCopyBufferCallback)
     VerifyBufferContents(pBuffer, BufferData);
 }
 
+
+
+TEST(GPUUploadManagerTest, ReleaseCallbackResources)
+{
+    GPUTestingEnvironment* pEnv     = GPUTestingEnvironment::GetInstance();
+    IRenderDevice*         pDevice  = pEnv->GetDevice();
+    IDeviceContext*        pContext = pEnv->GetDeviceContext();
+
+    GPUTestingEnvironment::ScopedReset AutoReset;
+
+    RefCntAutoPtr<IGPUUploadManager> pUploadManager;
+    GPUUploadManagerCreateInfo       CreateInfo{pDevice, pContext, 2048};
+    CreateGPUUploadManager(CreateInfo, &pUploadManager);
+    ASSERT_TRUE(pUploadManager != nullptr);
+
+    bool UploadEnqueuedCallbackCalled = false;
+    bool CopyBufferCallbackCalled     = false;
+
+    auto UploadEnqueuedCallback = MakeCallback(
+        [&UploadEnqueuedCallbackCalled](IBuffer* pDstBuffer,
+                                        Uint32   DstOffset,
+                                        Uint32   NumBytes) {
+            EXPECT_EQ(pDstBuffer, nullptr);
+            EXPECT_EQ(DstOffset, 128u);
+            EXPECT_EQ(NumBytes, 256u);
+            UploadEnqueuedCallbackCalled = true;
+        });
+
+    auto CopyBufferCallback = MakeCallback(
+        [&CopyBufferCallbackCalled](IDeviceContext* pContext,
+                                    IBuffer*        pSrcBuffer,
+                                    Uint32          SrcOffset,
+                                    Uint32          NumBytes) {
+            EXPECT_EQ(pContext, nullptr);
+            EXPECT_EQ(pSrcBuffer, nullptr);
+            EXPECT_EQ(SrcOffset, ~0u);
+            EXPECT_EQ(NumBytes, 1024u);
+            CopyBufferCallbackCalled = true;
+        });
+
+    std::thread Worker{
+        [&]() {
+            pUploadManager->ScheduleBufferUpdate({nullptr, nullptr, 128, 256, nullptr, UploadEnqueuedCallback, UploadEnqueuedCallback});
+            pUploadManager->ScheduleBufferUpdate({nullptr, 1024, nullptr, CopyBufferCallback, CopyBufferCallback});
+        }};
+
+    Worker.join();
+
+    EXPECT_FALSE(UploadEnqueuedCallbackCalled) << "UploadEnqueued callback should not have been called before the upload manager is destroyed";
+    EXPECT_FALSE(CopyBufferCallbackCalled) << "CopyBuffer callback should not have been called before the upload manager is destroyed";
+
+    pUploadManager.Release();
+
+    EXPECT_TRUE(UploadEnqueuedCallbackCalled) << "UploadEnqueued callback should have been called before the upload manager is destroyed";
+    EXPECT_TRUE(CopyBufferCallbackCalled) << "CopyBuffer callback should have been called before the upload manager is destroyed";
+}
+
 TEST(GPUUploadManagerTest, ParallelUpdates)
 {
     GPUTestingEnvironment* pEnv     = GPUTestingEnvironment::GetInstance();

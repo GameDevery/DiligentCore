@@ -314,4 +314,46 @@ TEST(GPUUploadManagerPageTest, TryEnqueueParallel)
     EXPECT_EQ(NumEnqueued.load(), size_t{1}) << "Only one thread should be able to enqueue the page";
 }
 
+
+TEST(GPUUploadManagerPageTest, ReleaseCallbackData)
+{
+    bool UploadEnqueuedCallbackCalled = false;
+    bool CopyBufferCallbackCalled     = false;
+
+    auto UploadEnqueuedCallback = MakeCallback(
+        [&UploadEnqueuedCallbackCalled](IBuffer* pDstBuffer,
+                                        Uint32   DstOffset,
+                                        Uint32   NumBytes) {
+            EXPECT_EQ(pDstBuffer, nullptr);
+            EXPECT_EQ(DstOffset, 128u);
+            EXPECT_EQ(NumBytes, 256u);
+            UploadEnqueuedCallbackCalled = true;
+        });
+
+    auto CopyBufferCallback = MakeCallback(
+        [&CopyBufferCallbackCalled](IDeviceContext* pContext,
+                                    IBuffer*        pSrcBuffer,
+                                    Uint32          SrcOffset,
+                                    Uint32          NumBytes) {
+            EXPECT_EQ(pContext, nullptr);
+            EXPECT_EQ(pSrcBuffer, nullptr);
+            EXPECT_EQ(SrcOffset, ~0u);
+            EXPECT_EQ(NumBytes, 1024u);
+            CopyBufferCallbackCalled = true;
+        });
+
+    {
+        GPUUploadManagerImpl::Page         Page{8192};
+        GPUUploadManagerImpl::Page::Writer Writer = Page.TryBeginWriting();
+        ASSERT_TRUE(Writer);
+
+        Writer.ScheduleBufferUpdate({nullptr, nullptr, 128, 256, nullptr, UploadEnqueuedCallback, UploadEnqueuedCallback});
+        Writer.ScheduleBufferUpdate({nullptr, 1024, nullptr, CopyBufferCallback, CopyBufferCallback});
+        Writer.EndWriting();
+    }
+
+    EXPECT_TRUE(UploadEnqueuedCallbackCalled) << "UploadEnqueued callback should have been called before the page is destroyed";
+    EXPECT_TRUE(CopyBufferCallbackCalled) << "CopyBuffer callback should have been called before the page is destroyed";
+}
+
 } // namespace

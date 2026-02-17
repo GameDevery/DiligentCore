@@ -66,6 +66,7 @@ public:
         explicit Page(Uint32 Size, bool PersistentMapped = false) noexcept;
 
         Page(IRenderDevice* pDevice, Uint32 Size);
+        ~Page();
 
         enum class WritingStatus
         {

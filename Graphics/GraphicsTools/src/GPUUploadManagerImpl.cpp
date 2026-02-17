@@ -105,6 +105,22 @@ GPUUploadManagerImpl::Page::Page(IRenderDevice* pDevice, Uint32 Size) :
     VERIFY_EXPR(m_pStagingBuffer != nullptr);
 }
 
+GPUUploadManagerImpl::Page::~Page()
+{
+    for (PendingOp Op; m_PendingOps.Dequeue(Op);)
+    {
+        if (Op.CopyBuffer != nullptr)
+        {
+            Op.CopyBuffer(nullptr, nullptr, ~0u, Op.NumBytes, Op.pCopyBufferData);
+        }
+
+        if (Op.UploadEnqueued != nullptr)
+        {
+            Op.UploadEnqueued(nullptr, Op.DstOffset, Op.NumBytes, Op.pUploadEnqueuedData);
+        }
+    }
+}
+
 GPUUploadManagerImpl::Page::Writer GPUUploadManagerImpl::Page::TryBeginWriting()
 {
     Uint32 State = m_State.load(std::memory_order_acquire);
@@ -196,7 +212,7 @@ bool GPUUploadManagerImpl::Page::ScheduleBufferUpdate(const ScheduleBufferUpdate
                 break; // Success
         }
 
-        if (m_pData != nullptr)
+        if (m_pData != nullptr && UpdateInfo.pSrcData != nullptr)
         {
             VERIFY_EXPR(UpdateInfo.pSrcData != nullptr);
             std::memcpy(static_cast<Uint8*>(m_pData) + Offset, UpdateInfo.pSrcData, UpdateInfo.NumBytes);
@@ -204,14 +220,17 @@ bool GPUUploadManagerImpl::Page::ScheduleBufferUpdate(const ScheduleBufferUpdate
     }
 
     PendingOp Op;
-    Op.pDstBuffer          = UpdateInfo.pDstBuffer;
-    Op.CopyBuffer          = UpdateInfo.CopyBuffer;
-    Op.pCopyBufferData     = UpdateInfo.pCopyBufferData;
-    Op.UploadEnqueued      = UpdateInfo.UploadEnqueued;
-    Op.pUploadEnqueuedData = UpdateInfo.pUploadEnqueuedData;
-    Op.SrcOffset           = Offset;
-    Op.DstOffset           = UpdateInfo.DstOffset;
-    Op.NumBytes            = UpdateInfo.NumBytes;
+    Op.pDstBuffer      = UpdateInfo.pDstBuffer;
+    Op.CopyBuffer      = UpdateInfo.CopyBuffer;
+    Op.pCopyBufferData = UpdateInfo.pCopyBufferData;
+    if (Op.CopyBuffer == nullptr)
+    {
+        Op.UploadEnqueued      = UpdateInfo.UploadEnqueued;
+        Op.pUploadEnqueuedData = UpdateInfo.pUploadEnqueuedData;
+    }
+    Op.SrcOffset = Offset;
+    Op.DstOffset = UpdateInfo.DstOffset;
+    Op.NumBytes  = UpdateInfo.NumBytes;
     m_PendingOps.Enqueue(std::move(Op));
     m_NumPendingOps.fetch_add(1, std::memory_order_acq_rel);
 
@@ -238,7 +257,7 @@ void GPUUploadManagerImpl::Page::ExecutePendingOps(IDeviceContext* pContext, Uin
         }
         else
         {
-            if (pContext != nullptr && Op.NumBytes > 0)
+            if (pContext != nullptr && Op.pDstBuffer != nullptr && Op.NumBytes > 0)
             {
                 pContext->CopyBuffer(m_pStagingBuffer, Op.SrcOffset, RESOURCE_STATE_TRANSITION_MODE_TRANSITION,
                                      Op.pDstBuffer, Op.DstOffset, Op.NumBytes, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
