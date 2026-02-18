@@ -125,11 +125,11 @@ typedef void (*GPUUploadEnqueuedCallbackType)(IBuffer* pDstBuffer,
 ///
 ///          If follow-up work is required, the callback should only enqueue work to be
 ///          processed later (e.g. push a task into a user-owned queue) and return promptly.
-typedef void (*CopyBufferCallbackType)(IDeviceContext* pContext,
-                                       IBuffer*        pSrcBuffer,
-                                       Uint32          SrcOffset,
-                                       Uint32          NumBytes,
-                                       void*           pUserData);
+typedef void (*CopyStagingBufferCallbackType)(IDeviceContext* pContext,
+                                              IBuffer*        pSrcBuffer,
+                                              Uint32          SrcOffset,
+                                              Uint32          NumBytes,
+                                              void*           pUserData);
 
 
 /// Structure describing a buffer update operation to be scheduled by IGPUUploadManager::ScheduleBufferUpdate().
@@ -175,7 +175,7 @@ struct ScheduleBufferUpdateInfo
     /// from the source data to the destination buffer using its internal staging buffer and copy command.
     /// If the callback is provided, it must perform the copy operation itself. The manager will pass the
     /// necessary parameters to the callback.
-    CopyBufferCallbackType CopyBuffer DEFAULT_INITIALIZER(nullptr);
+    CopyStagingBufferCallbackType CopyBuffer DEFAULT_INITIALIZER(nullptr);
 
     /// Optional pointer to user data that will be passed to the CopyBuffer callback.
     void* pCopyBufferData DEFAULT_INITIALIZER(nullptr);
@@ -207,11 +207,11 @@ struct ScheduleBufferUpdateInfo
         pUploadEnqueuedData{_pUploadEnqueuedData}
     {}
 
-    ScheduleBufferUpdateInfo(IDeviceContext*        _pCtx,
-                             Uint32                 _NumBytes,
-                             const void*            _pSrcData,
-                             CopyBufferCallbackType _CopyBuffer,
-                             void*                  _pCopyBufferData = nullptr) noexcept :
+    ScheduleBufferUpdateInfo(IDeviceContext*               _pCtx,
+                             Uint32                        _NumBytes,
+                             const void*                   _pSrcData,
+                             CopyStagingBufferCallbackType _CopyBuffer,
+                             void*                         _pCopyBufferData = nullptr) noexcept :
         pContext{_pCtx},
         NumBytes{_NumBytes},
         pSrcData{_pSrcData},

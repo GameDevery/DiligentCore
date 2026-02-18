@@ -178,8 +178,8 @@ public:
         {
             RefCntAutoPtr<IBuffer> pDstBuffer;
 
-            CopyBufferCallbackType CopyBuffer      = nullptr;
-            void*                  pCopyBufferData = nullptr;
+            CopyStagingBufferCallbackType CopyBuffer      = nullptr;
+            void*                         pCopyBufferData = nullptr;
 
             GPUUploadEnqueuedCallbackType UploadEnqueued      = nullptr;
             void*                         pUploadEnqueuedData = nullptr;
