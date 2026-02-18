@@ -212,10 +212,17 @@ bool GPUUploadManagerImpl::Page::ScheduleBufferUpdate(const ScheduleBufferUpdate
                 break; // Success
         }
 
-        if (m_pData != nullptr && UpdateInfo.pSrcData != nullptr)
+        if (m_pData != nullptr)
         {
-            VERIFY_EXPR(UpdateInfo.pSrcData != nullptr);
-            std::memcpy(static_cast<Uint8*>(m_pData) + Offset, UpdateInfo.pSrcData, UpdateInfo.NumBytes);
+            Uint8* pDst = static_cast<Uint8*>(m_pData) + Offset;
+            if (UpdateInfo.WriteDataCallback != nullptr)
+            {
+                UpdateInfo.WriteDataCallback(pDst, UpdateInfo.NumBytes, UpdateInfo.pWriteDataCallbackUserData);
+            }
+            else if (UpdateInfo.pSrcData != nullptr)
+            {
+                std::memcpy(pDst, UpdateInfo.pSrcData, UpdateInfo.NumBytes);
+            }
         }
     }
 

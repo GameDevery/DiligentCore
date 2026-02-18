@@ -56,6 +56,20 @@ struct GPUUploadManagerCreateInfo
 };
 typedef struct GPUUploadManagerCreateInfo GPUUploadManagerCreateInfo;
 
+
+/// Callback function type for writing data to a staging buffer.
+/// This callback is invoked by ScheduleBufferUpdate() when the manager needs to write data to a staging buffer page.
+/// The callback is expected to write the data to the provided destination pointer.
+/// \param [in] pDstData   - Pointer to the staging buffer memory where the data should be written.
+/// \param [in] NumBytes   - Number of bytes to write. This is the same number of bytes specified in ScheduleBufferUpdateInfo::NumBytes.
+/// \param [in] pUserData  - User-provided pointer passed to ScheduleBufferUpdate().
+///
+/// \warning Reentrancy / thread-safety:
+///          The callback is executed from inside IGPUUploadManager::ScheduleBufferUpdate().
+///          The callback MUST NOT call back into the same IGPUUploadManager instance.
+typedef void (*WriteStagingDataCallbackType)(void* pDstData, Uint32 NumBytes, void* pUserData);
+
+
 /// Callback function type for GPU upload enqueued callback.
 ///
 /// This callback is invoked on the render thread when the copy command for the update
@@ -117,6 +131,7 @@ typedef void (*CopyBufferCallbackType)(IDeviceContext* pContext,
                                        Uint32          NumBytes,
                                        void*           pUserData);
 
+
 /// Structure describing a buffer update operation to be scheduled by IGPUUploadManager::ScheduleBufferUpdate().
 struct ScheduleBufferUpdateInfo
 {
@@ -143,7 +158,18 @@ struct ScheduleBufferUpdateInfo
     /// Pointer to the source data to copy to the destination buffer.
     /// The manager makes an internal copy of the source data, so the memory pointed to by this
     /// parameter can be safely released or reused after the method returns.
+    /// If WriteDataCallback callback is provided, this parameter will be ignored, and the callback must
+    /// write the source data to the staging buffer when requested by the manager.
     const void* pSrcData DEFAULT_INITIALIZER(nullptr);
+
+    /// Optional callback to write data to a staging buffer. If provided, the pSrcData parameter is ignored,
+    /// and the manager will call the callback with a pointer to the staging buffer memory when it needs to
+    /// write data to a staging buffer page.
+    /// The callback will be called from ScheduleBufferUpdate().
+    WriteStagingDataCallbackType WriteDataCallback DEFAULT_INITIALIZER(nullptr);
+
+    /// Optional pointer to user data that will be passed to the WriteStagingDataCallback.
+    void* pWriteDataCallbackUserData DEFAULT_INITIALIZER(nullptr);
 
     /// Optional callback to perform the copy operation. If this parameter is null, the manager will perform the copy
     /// from the source data to the destination buffer using its internal staging buffer and copy command.

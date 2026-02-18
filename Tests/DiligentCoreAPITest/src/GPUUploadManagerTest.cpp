@@ -211,6 +211,59 @@ TEST(GPUUploadManagerTest, ScheduleUpdatesWithCopyBufferCallback)
 }
 
 
+TEST(GPUUploadManagerTest, ScheduleUpdatesWithWriteDataCallback)
+{
+    GPUTestingEnvironment* pEnv     = GPUTestingEnvironment::GetInstance();
+    IRenderDevice*         pDevice  = pEnv->GetDevice();
+    IDeviceContext*        pContext = pEnv->GetDeviceContext();
+
+    GPUTestingEnvironment::ScopedReset AutoReset;
+
+    RefCntAutoPtr<IGPUUploadManager> pUploadManager;
+    GPUUploadManagerCreateInfo       CreateInfo{pDevice, pContext, 1024};
+    CreateInfo.InitialPageCount = 2;
+    CreateInfo.MaxPageCount     = 0;
+    CreateGPUUploadManager(CreateInfo, &pUploadManager);
+    ASSERT_TRUE(pUploadManager != nullptr);
+
+    std::vector<Uint8> BufferData(16384);
+    for (size_t i = 0; i < BufferData.size(); ++i)
+    {
+        BufferData[i] = static_cast<Uint8>(i % 256);
+    }
+
+    BufferDesc Desc;
+    Desc.Name      = "GPUUploadManagerTest buffer";
+    Desc.Size      = BufferData.size();
+    Desc.Usage     = USAGE_DEFAULT;
+    Desc.BindFlags = BIND_VERTEX_BUFFER;
+
+    RefCntAutoPtr<IBuffer> pBuffer;
+    pDevice->CreateBuffer(Desc, nullptr, &pBuffer);
+    ASSERT_TRUE(pBuffer);
+
+    Uint32 CurrOffset = 0;
+
+    auto WriteDataCallback = MakeCallback([&](void* pDstData, Uint32 NumBytes) {
+        std::memcpy(pDstData, &BufferData[CurrOffset], NumBytes);
+    });
+
+    for (Uint32 NumBytes : {256, 4096, 256, 8192, 1024, 2048, 512})
+    {
+        ScheduleBufferUpdateInfo UpdateInfo{pContext, pBuffer, CurrOffset, NumBytes, nullptr};
+        UpdateInfo.WriteDataCallback          = WriteDataCallback;
+        UpdateInfo.pWriteDataCallbackUserData = WriteDataCallback;
+        pUploadManager->ScheduleBufferUpdate(UpdateInfo);
+
+        CurrOffset += NumBytes;
+    }
+
+    pUploadManager->RenderThreadUpdate(pContext);
+    pUploadManager->RenderThreadUpdate(pContext);
+
+    VerifyBufferContents(pBuffer, BufferData);
+}
+
 
 TEST(GPUUploadManagerTest, ReleaseCallbackResources)
 {
