@@ -207,6 +207,15 @@ struct ScheduleBufferUpdateInfo
         pUploadEnqueuedData{_pUploadEnqueuedData}
     {}
 
+    ScheduleBufferUpdateInfo(IBuffer*                      _pDstBuf,
+                             Uint32                        _DstOffs,
+                             Uint32                        _NumBytes,
+                             const void*                   _pSrcData,
+                             GPUUploadEnqueuedCallbackType _UploadEnqueued      = nullptr,
+                             void*                         _pUploadEnqueuedData = nullptr) noexcept :
+        ScheduleBufferUpdateInfo{nullptr, _pDstBuf, _DstOffs, _NumBytes, _pSrcData, _UploadEnqueued, _pUploadEnqueuedData}
+    {}
+
     ScheduleBufferUpdateInfo(IDeviceContext*               _pCtx,
                              Uint32                        _NumBytes,
                              const void*                   _pSrcData,
@@ -217,6 +226,13 @@ struct ScheduleBufferUpdateInfo
         pSrcData{_pSrcData},
         CopyBuffer{_CopyBuffer},
         pCopyBufferData{_pCopyBufferData}
+    {}
+
+    ScheduleBufferUpdateInfo(Uint32                        _NumBytes,
+                             const void*                   _pSrcData,
+                             CopyStagingBufferCallbackType _CopyBuffer,
+                             void*                         _pCopyBufferData = nullptr) noexcept :
+        ScheduleBufferUpdateInfo{nullptr, _NumBytes, _pSrcData, _CopyBuffer, _pCopyBufferData}
     {}
 #endif
 };
