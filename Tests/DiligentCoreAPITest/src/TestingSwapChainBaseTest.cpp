@@ -93,6 +93,101 @@ TEST(TestingSwapChainBaseTest, ToleratesConfiguredImageDifferences)
 
 #if !PLATFORM_WEB
 
+class ComparisonFailureImageGuard
+{
+public:
+    ComparisonFailureImageGuard()
+    {
+        const testing::TestInfo* const TestInfo = testing::UnitTest::GetInstance()->current_test_info();
+        VERIFY_EXPR(TestInfo != nullptr);
+        if (TestInfo != nullptr)
+            m_FileName = std::string{TestInfo->test_suite_name()} + "." + TestInfo->name() + "_FAIL_.png";
+    }
+
+    ~ComparisonFailureImageGuard()
+    {
+        if (!m_FileName.empty())
+            FileSystem::DeleteFile(m_FileName.c_str());
+    }
+
+    // clang-format off
+    ComparisonFailureImageGuard(const ComparisonFailureImageGuard&)            = delete;
+    ComparisonFailureImageGuard& operator=(const ComparisonFailureImageGuard&) = delete;
+    // clang-format on
+
+private:
+    std::string m_FileName;
+};
+
+void TestSnapshotComparisonFailure(Uint32 Channel)
+{
+    ASSERT_LT(Channel, 4u);
+
+    GPUTestingEnvironment::ScopedReset AutoReset;
+
+    GPUTestingEnvironment* const pEnvironment = GPUTestingEnvironment::GetInstance();
+    IDeviceContext* const        pContext     = pEnvironment->GetDeviceContext();
+    ISwapChain* const            pSwapChain   = pEnvironment->GetSwapChain();
+    ASSERT_NE(pContext, nullptr);
+    ASSERT_NE(pSwapChain, nullptr);
+
+    RefCntAutoPtr<ITestingSwapChain> pTestingSwapChain{pSwapChain, IID_TestingSwapChain};
+    ASSERT_NE(pTestingSwapChain, nullptr);
+
+    const SwapChainDesc& SwapChainDesc = pSwapChain->GetDesc();
+    std::vector<Uint8>   ReferencePixels(static_cast<size_t>(SwapChainDesc.Width) * SwapChainDesc.Height * 4, 255);
+    pTestingSwapChain->SetReferenceData(ReferencePixels.data());
+
+    float ClearColor[]  = {1, 1, 1, 1};
+    ClearColor[Channel] = 0;
+    ITextureView* pRTV  = pSwapChain->GetCurrentBackBufferRTV();
+    pContext->SetRenderTargets(1, &pRTV, nullptr, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+    pContext->ClearRenderTarget(pRTV, ClearColor, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+
+    ComparisonFailureImageGuard FailureImageGuard;
+    EXPECT_NONFATAL_FAILURE(
+        pTestingSwapChain->CompareWithSnapshot(nullptr),
+        "Image rendered by the test differs from the reference image");
+}
+
+void TestImageComparisonFailure(Uint32 Channel)
+{
+    ASSERT_LT(Channel, 3u);
+
+    GPUTestingEnvironment::ScopedReset AutoReset;
+
+    GPUTestingEnvironment* const pEnvironment = GPUTestingEnvironment::GetInstance();
+    IDeviceContext* const        pContext     = pEnvironment->GetDeviceContext();
+    ISwapChain* const            pSwapChain   = pEnvironment->GetSwapChain();
+    ASSERT_NE(pContext, nullptr);
+    ASSERT_NE(pSwapChain, nullptr);
+
+    RefCntAutoPtr<ITestingSwapChain> pTestingSwapChain{pSwapChain, IID_TestingSwapChain};
+    ASSERT_NE(pTestingSwapChain, nullptr);
+
+    const SwapChainDesc& SwapChainDesc = pSwapChain->GetDesc();
+    std::vector<Uint8>   ReferencePixels(static_cast<size_t>(SwapChainDesc.Width) * SwapChainDesc.Height * 4, 255);
+
+    TempDirectory     TempDir{"TestingSwapChainBaseTest"};
+    const std::string ImageName = TempDir.Get() + "/Reference";
+    const std::string ImagePath = ImageName + ".png";
+    DumpTestImage(ReferencePixels.data(), Uint64{SwapChainDesc.Width} * 4,
+                  SwapChainDesc.Width, SwapChainDesc.Height,
+                  TEX_FORMAT_RGBA8_UNORM, ImageName.c_str(), false);
+    ASSERT_TRUE(pTestingSwapChain->LoadReferenceImage(ImagePath.c_str()));
+
+    float ClearColor[]  = {1, 1, 1, 1};
+    ClearColor[Channel] = 0;
+    ITextureView* pRTV  = pSwapChain->GetCurrentBackBufferRTV();
+    pContext->SetRenderTargets(1, &pRTV, nullptr, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+    pContext->ClearRenderTarget(pRTV, ClearColor, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+
+    ComparisonFailureImageGuard FailureImageGuard;
+    EXPECT_NONFATAL_FAILURE(
+        pTestingSwapChain->CompareWithSnapshot(nullptr),
+        "Image rendered by the test differs from the reference image");
+}
+
 TEST(TestingSwapChainBaseTest, LoadsPNGAsRGBA8)
 {
     constexpr Uint32                                Width  = 2;
@@ -105,11 +200,11 @@ TEST(TestingSwapChainBaseTest, LoadsPNGAsRGBA8)
         0,
         255,
         0,
-        64,
+        85,
         0,
         0,
         255,
-        128,
+        170,
         255,
         255,
         255,
@@ -129,10 +224,55 @@ TEST(TestingSwapChainBaseTest, LoadsPNGAsRGBA8)
     EXPECT_EQ(LoadedWidth, Width);
     EXPECT_EQ(LoadedHeight, Height);
     EXPECT_EQ(LoadedPixels.size(), SourcePixels.size());
+    for (size_t Pixel = 0; Pixel < SourcePixels.size(); Pixel += 4)
+    {
+        EXPECT_TRUE(std::equal(LoadedPixels.begin() + Pixel,
+                               LoadedPixels.begin() + Pixel + 3,
+                               SourcePixels.begin() + Pixel));
+        EXPECT_EQ(LoadedPixels[Pixel + 3], 255);
+    }
+}
+
+TEST(TestingSwapChainBaseTest, PreservesImageAlphaWhenRequested)
+{
+    constexpr Uint32                                Width  = 2;
+    constexpr Uint32                                Height = 2;
+    constexpr std::array<Uint8, Width * Height * 4> SourcePixels{
+        255,
+        0,
+        0,
+        0,
+        0,
+        255,
+        0,
+        85,
+        0,
+        0,
+        255,
+        170,
+        255,
+        255,
+        255,
+        255,
+    };
+
+    TempDirectory     TempDir{"TestingSwapChainBaseTest"};
+    const std::string ImageName = TempDir.Get() + "/ReferenceWithAlpha";
+    const std::string ImagePath = ImageName + ".png";
+    DumpTestImage(SourcePixels.data(), Width * 4, Width, Height,
+                  TEX_FORMAT_RGBA8_UNORM, ImageName.c_str(), false, true);
+
+    std::vector<Uint8> LoadedPixels;
+    Uint32             LoadedWidth  = 0;
+    Uint32             LoadedHeight = 0;
+    ASSERT_TRUE(LoadTestImage(ImagePath.c_str(), LoadedPixels, LoadedWidth, LoadedHeight));
+    EXPECT_EQ(LoadedWidth, Width);
+    EXPECT_EQ(LoadedHeight, Height);
+    EXPECT_EQ(LoadedPixels.size(), SourcePixels.size());
     EXPECT_TRUE(std::equal(LoadedPixels.begin(), LoadedPixels.end(), SourcePixels.begin()));
 }
 
-TEST(TestingSwapChainBaseTest, LoadsReferenceImageIntoSwapChain)
+TEST(TestingSwapChainBaseTest, ImageComparisonIgnoresAlphaDifference)
 {
     GPUTestingEnvironment::ScopedReset AutoReset;
 
@@ -146,14 +286,7 @@ TEST(TestingSwapChainBaseTest, LoadsReferenceImageIntoSwapChain)
     ASSERT_NE(pTestingSwapChain, nullptr);
 
     const SwapChainDesc& SwapChainDesc = pSwapChain->GetDesc();
-    std::vector<Uint8>   ReferencePixels(static_cast<size_t>(SwapChainDesc.Width) * SwapChainDesc.Height * 4);
-    for (size_t Pixel = 0; Pixel < ReferencePixels.size(); Pixel += 4)
-    {
-        ReferencePixels[Pixel + 0] = 255;
-        ReferencePixels[Pixel + 1] = 0;
-        ReferencePixels[Pixel + 2] = 0;
-        ReferencePixels[Pixel + 3] = 255;
-    }
+    std::vector<Uint8>   ReferencePixels(static_cast<size_t>(SwapChainDesc.Width) * SwapChainDesc.Height * 4, 255);
 
     TempDirectory     TempDir{"TestingSwapChainBaseTest"};
     const std::string ImageName = TempDir.Get() + "/Reference";
@@ -163,7 +296,9 @@ TEST(TestingSwapChainBaseTest, LoadsReferenceImageIntoSwapChain)
                   TEX_FORMAT_RGBA8_UNORM, ImageName.c_str(), false);
     ASSERT_TRUE(pTestingSwapChain->LoadReferenceImage(ImagePath.c_str()));
 
-    constexpr float ClearColor[] = {1, 0, 0, 1};
+    // File references describe visible RGB output; render-target alpha is not
+    // part of the comparison.
+    constexpr float ClearColor[] = {1, 1, 1, 0};
     ITextureView*   pRTV         = pSwapChain->GetCurrentBackBufferRTV();
     pContext->SetRenderTargets(1, &pRTV, nullptr, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
     pContext->ClearRenderTarget(pRTV, ClearColor,
@@ -171,42 +306,39 @@ TEST(TestingSwapChainBaseTest, LoadsReferenceImageIntoSwapChain)
     pTestingSwapChain->CompareWithSnapshot(nullptr);
 }
 
-TEST(TestingSwapChainBaseTest, ReportsComparisonFailure)
+TEST(TestingSwapChainBaseTest, ReportsSnapshotRedComparisonFailure)
 {
-    GPUTestingEnvironment::ScopedReset AutoReset;
+    TestSnapshotComparisonFailure(0);
+}
 
-    GPUTestingEnvironment* const pEnvironment = GPUTestingEnvironment::GetInstance();
-    IDeviceContext* const        pContext     = pEnvironment->GetDeviceContext();
-    ISwapChain* const            pSwapChain   = pEnvironment->GetSwapChain();
-    ASSERT_NE(pContext, nullptr);
-    ASSERT_NE(pSwapChain, nullptr);
+TEST(TestingSwapChainBaseTest, ReportsSnapshotGreenComparisonFailure)
+{
+    TestSnapshotComparisonFailure(1);
+}
 
-    RefCntAutoPtr<ITestingSwapChain> pTestingSwapChain{pSwapChain, IID_TestingSwapChain};
-    ASSERT_NE(pTestingSwapChain, nullptr);
+TEST(TestingSwapChainBaseTest, ReportsSnapshotBlueComparisonFailure)
+{
+    TestSnapshotComparisonFailure(2);
+}
 
-    const SwapChainDesc& SwapChainDesc = pSwapChain->GetDesc();
-    std::vector<Uint8>   ReferencePixels(static_cast<size_t>(SwapChainDesc.Width) * SwapChainDesc.Height * 4, 0);
-    for (size_t Pixel = 3; Pixel < ReferencePixels.size(); Pixel += 4)
-        ReferencePixels[Pixel] = 255;
+TEST(TestingSwapChainBaseTest, ReportsSnapshotAlphaComparisonFailure)
+{
+    TestSnapshotComparisonFailure(3);
+}
 
-    TempDirectory     TempDir{"TestingSwapChainBaseTest"};
-    const std::string ImageName = TempDir.Get() + "/Reference";
-    const std::string ImagePath = ImageName + ".png";
-    DumpTestImage(ReferencePixels.data(), Uint64{SwapChainDesc.Width} * 4,
-                  SwapChainDesc.Width, SwapChainDesc.Height,
-                  TEX_FORMAT_RGBA8_UNORM, ImageName.c_str(), false);
-    ASSERT_TRUE(pTestingSwapChain->LoadReferenceImage(ImagePath.c_str()));
+TEST(TestingSwapChainBaseTest, ReportsImageRedComparisonFailure)
+{
+    TestImageComparisonFailure(0);
+}
 
-    constexpr float ClearColor[] = {1, 1, 1, 1};
-    ITextureView*   pRTV         = pSwapChain->GetCurrentBackBufferRTV();
-    pContext->SetRenderTargets(1, &pRTV, nullptr, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
-    pContext->ClearRenderTarget(pRTV, ClearColor, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+TEST(TestingSwapChainBaseTest, ReportsImageGreenComparisonFailure)
+{
+    TestImageComparisonFailure(1);
+}
 
-    EXPECT_NONFATAL_FAILURE(
-        pTestingSwapChain->CompareWithSnapshot(nullptr),
-        "Image rendered by the test differs from the reference image");
-
-    FileSystem::DeleteFile("TestingSwapChainBaseTest.ReportsComparisonFailure_FAIL_.png");
+TEST(TestingSwapChainBaseTest, ReportsImageBlueComparisonFailure)
+{
+    TestImageComparisonFailure(2);
 }
 
 #endif

@@ -231,6 +231,8 @@ void TestingSwapChainD3D12::TransitionRenderTarget(ID3D12GraphicsCommandList* pC
 
 void TestingSwapChainD3D12::TakeSnapshot(ITexture* pCopyFrom)
 {
+    m_ReferenceSource = ReferenceSource::Snapshot;
+
     auto* pEnv     = TestingEnvironmentD3D12::GetInstance();
     auto  pCmdList = pEnv->CreateGraphicsCommandList();
 

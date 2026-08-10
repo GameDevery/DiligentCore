@@ -155,6 +155,8 @@ void TestingSwapChainGL::ReleaseBackendResources()
 
 void TestingSwapChainGL::TakeSnapshot(ITexture* pCopyFrom)
 {
+    m_ReferenceSource = ReferenceSource::Snapshot;
+
     glBindFramebuffer(GL_READ_FRAMEBUFFER, m_FBO);
     if (pCopyFrom != nullptr)
     {

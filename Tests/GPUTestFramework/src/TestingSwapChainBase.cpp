@@ -113,7 +113,8 @@ void CompareTestImages(const Uint8*                          pReferencePixels,
                        Uint32                                Height,
                        TEXTURE_FORMAT                        Format,
                        std::unordered_map<std::string, int>& FailureCounters,
-                       const TestImageComparisonAttribs&     ComparisonAttribs)
+                       const TestImageComparisonAttribs&     ComparisonAttribs,
+                       bool                                  CompareAlpha)
 {
     VERIFY_EXPR(pReferencePixels != nullptr);
     VERIFY_EXPR(pPixels != nullptr);
@@ -126,13 +127,34 @@ void CompareTestImages(const Uint8*                          pReferencePixels,
 
     bool bIsIdentical = true;
 
-    for (Uint32 row = 0; row < Height; ++row)
+    const Uint32 ComponentCount = CompareAlpha ? 4u : 3u;
+    if (CompareAlpha)
     {
-        if (memcmp(pReferencePixels + row * RefPixelsStride,
-                   pPixels + row * PixelsStride,
-                   Width * 4) != 0)
+        for (Uint32 Row = 0; Row < Height; ++Row)
         {
-            bIsIdentical = false;
+            if (memcmp(pReferencePixels + Row * RefPixelsStride,
+                       pPixels + Row * PixelsStride,
+                       Width * 4) != 0)
+            {
+                bIsIdentical = false;
+                break;
+            }
+        }
+    }
+    else
+    {
+        for (Uint32 Row = 0; Row < Height && bIsIdentical; ++Row)
+        {
+            for (Uint32 Col = 0; Col < Width; ++Col)
+            {
+                if (memcmp(pReferencePixels + Row * RefPixelsStride + Col * 4,
+                           pPixels + Row * PixelsStride + Col * 4,
+                           ComponentCount) != 0)
+                {
+                    bIsIdentical = false;
+                    break;
+                }
+            }
         }
     }
 
@@ -146,7 +168,7 @@ void CompareTestImages(const Uint8*                          pReferencePixels,
         for (Uint32 Col = 0; Col < Width; ++Col)
         {
             bool BadPixel = false;
-            for (Uint32 Component = 0; Component < 4; ++Component)
+            for (Uint32 Component = 0; Component < ComponentCount; ++Component)
             {
                 const Uint32 RefValue = pReferencePixels[Row * RefPixelsStride + Col * 4 + Component];
                 const Uint32 Value    = pPixels[Row * PixelsStride + Col * 4 + Component];
@@ -226,7 +248,8 @@ void DumpTestImage(const Uint8*   pPixels,
                    Uint32         Height,
                    TEXTURE_FORMAT Format,
                    const char*    DumpName,
-                   bool           bIsOpenGL)
+                   bool           bIsOpenGL,
+                   bool           KeepAlpha)
 {
 
     VERIFY_EXPR(pPixels != nullptr);
@@ -235,22 +258,23 @@ void DumpTestImage(const Uint8*   pPixels,
     VERIFY_EXPR(PixelsStride != 0);
     VERIFY(Format == TEX_FORMAT_RGBA8_UNORM, GetTextureFormatAttribs(Format).Name, " is not supported");
 
-    const auto         DumpImageStride = Width * 4;
+    const Uint32       ComponentCount  = KeepAlpha ? 4u : 3u;
+    const auto         DumpImageStride = Width * ComponentCount;
     std::vector<Uint8> DumpImage(DumpImageStride * Height);
     for (Uint32 y = 0; y < Height; ++y)
     {
         for (Uint32 x = 0; x < Width; ++x)
         {
-            for (Uint32 c = 0; c < 4; ++c)
+            for (Uint32 c = 0; c < ComponentCount; ++c)
             {
-                const Uint32 FlipCoord                     = bIsOpenGL ? (Height - 1 - y) : y;
-                DumpImage[y * DumpImageStride + x * 4 + c] = pPixels[FlipCoord * PixelsStride + x * 4 + c];
+                const Uint32 FlipCoord                                  = bIsOpenGL ? (Height - 1 - y) : y;
+                DumpImage[y * DumpImageStride + x * ComponentCount + c] = pPixels[FlipCoord * PixelsStride + x * 4 + c];
             }
         }
     }
 
     const String FileName = String{DumpName} + ".png";
-    if (stbi_write_png(FileName.c_str(), Width, Height, 4, DumpImage.data(), static_cast<int>(DumpImageStride)) == 0)
+    if (stbi_write_png(FileName.c_str(), Width, Height, static_cast<int>(ComponentCount), DumpImage.data(), static_cast<int>(DumpImageStride)) == 0)
     {
         LOG_ERROR_MESSAGE("Failed to write ", FileName);
     }

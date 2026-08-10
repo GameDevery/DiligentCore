@@ -1,5 +1,5 @@
 /*
- *  Copyright 2019-2022 Diligent Graphics LLC
+ *  Copyright 2019-2026 Diligent Graphics LLC
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -87,6 +87,8 @@ void TestingSwapChainMtl::ReleaseBackendResources()
 
 void TestingSwapChainMtl::TakeSnapshot(ITexture* pCopyFrom)
 {
+    m_ReferenceSource = ReferenceSource::Snapshot;
+
     auto mtlCommandQueue = m_pEnvironment->GetMtlCommandQueue();
 
     id<MTLTexture> mtlTexture = nil;

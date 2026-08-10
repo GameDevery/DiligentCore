@@ -175,6 +175,8 @@ void TestingSwapChainWebGPU::ReleaseBackendResources()
 
 void TestingSwapChainWebGPU::TakeSnapshot(ITexture* pCopyFrom)
 {
+    m_ReferenceSource = ReferenceSource::Snapshot;
+
     RefCntAutoPtr<IDeviceContextWebGPU> pContextWebGPU{m_pContext, IID_DeviceContextWebGPU};
 
     WGPUTexture wgpuSrcTexture = m_wgpuColorTexture;

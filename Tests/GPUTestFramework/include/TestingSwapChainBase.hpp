@@ -65,7 +65,8 @@ void CompareTestImages(const Uint8*                          pReferencePixels,
                        Uint32                                Height,
                        TEXTURE_FORMAT                        Format,
                        std::unordered_map<std::string, int>& FailureCounters,
-                       const TestImageComparisonAttribs&     ComparisonAttribs = {});
+                       const TestImageComparisonAttribs&     ComparisonAttribs = {},
+                       bool                                  CompareAlpha      = true);
 
 /// Loads an RGBA8 reference image from a PNG file.
 bool LoadTestImage(const char*         FilePath,
@@ -73,13 +74,15 @@ bool LoadTestImage(const char*         FilePath,
                    Uint32&             Width,
                    Uint32&             Height);
 
+/// Writes the image to a PNG file. Alpha is omitted by default.
 void DumpTestImage(const Uint8*   pPixels,
                    Uint64         PixelsStride,
                    Uint32         Width,
                    Uint32         Height,
                    TEXTURE_FORMAT Format,
                    const char*    DumpName,
-                   bool           bIsOpenGL);
+                   bool           bIsOpenGL,
+                   bool           KeepAlpha = false);
 
 // {41BF4655-9B33-4E6C-9300-0CB45FBFE104}
 static constexpr INTERFACE_ID IID_TestingSwapChain =
@@ -94,7 +97,8 @@ public:
     /// Data must contain rows matching the swap-chain dimensions and color format.
     virtual void SetReferenceData(const void* pData, size_t Stride = 0) = 0;
 
-    /// Loads the reference image used by Present()/CompareWithSnapshot() from a PNG file.
+    /// Loads the RGB reference image used by Present()/CompareWithSnapshot() from a PNG file.
+    /// The alpha channel is ignored when comparing file-based references.
     virtual bool LoadReferenceImage(const char* FilePath) = 0;
 
     /// Sets image comparison settings. Exact comparison is used by default.
@@ -102,7 +106,8 @@ public:
 
     virtual ITextureView* GetCurrentBackBufferUAV() = 0;
 
-    virtual void DumpBackBuffer(const char* FileName) = 0;
+    /// Writes the back buffer to a PNG file. Alpha is omitted by default.
+    virtual void DumpBackBuffer(const char* FileName, bool KeepAlpha = false) = 0;
 
     virtual void CompareWithSnapshot(ITexture* pTexture) = 0;
 };
@@ -185,6 +190,7 @@ public:
                         pSrcData + row * Stride,
                         RowSize);
         }
+        m_ReferenceSource = ReferenceSource::Snapshot;
     }
 
     virtual bool LoadReferenceImage(const char* FilePath) override final
@@ -222,6 +228,10 @@ public:
         {
             SetReferenceData(Pixels.data(), RowStride);
         }
+
+        // Golden PNGs represent the visible framebuffer. DumpTestImage() omits
+        // alpha so image viewers display the complete rendered background.
+        m_ReferenceSource = ReferenceSource::Image;
 
         return true;
     }
@@ -293,7 +303,7 @@ public:
         return m_SwapChainDesc;
     }
 
-    virtual void DumpBackBuffer(const char* FileName) override final
+    virtual void DumpBackBuffer(const char* FileName, bool KeepAlpha = false) override final
     {
         m_pContext->SetRenderTargets(0, nullptr, nullptr, RESOURCE_STATE_TRANSITION_MODE_NONE);
 
@@ -318,7 +328,7 @@ public:
         }
 
         m_pContext->MapTextureSubresource(m_pStagingTexture, 0, 0, MAP_READ, MapFlag, nullptr, MapData);
-        DumpTestImage(static_cast<const Uint8*>(MapData.pData), MapData.Stride, m_SwapChainDesc.Width, m_SwapChainDesc.Height, m_SwapChainDesc.ColorBufferFormat, FileName, m_pDevice->GetDeviceInfo().IsGLDevice());
+        DumpTestImage(static_cast<const Uint8*>(MapData.pData), MapData.Stride, m_SwapChainDesc.Width, m_SwapChainDesc.Height, m_SwapChainDesc.ColorBufferFormat, FileName, m_pDevice->GetDeviceInfo().IsGLDevice(), KeepAlpha);
         m_pContext->UnmapTextureSubresource(m_pStagingTexture, 0, 0);
     }
 
@@ -355,12 +365,18 @@ public:
         m_pContext->MapTextureSubresource(m_pStagingTexture, 0, 0, MAP_READ, MapFlag, nullptr, MapData);
         CompareTestImages(m_ReferenceData.data(), m_ReferenceDataPitch, static_cast<const Uint8*>(MapData.pData), MapData.Stride,
                           m_SwapChainDesc.Width, m_SwapChainDesc.Height, m_SwapChainDesc.ColorBufferFormat, m_FailureCounters,
-                          m_ImageComparisonAttribs);
+                          m_ImageComparisonAttribs, m_ReferenceSource == ReferenceSource::Snapshot);
 
         m_pContext->UnmapTextureSubresource(m_pStagingTexture, 0, 0);
     }
 
 protected:
+    enum class ReferenceSource
+    {
+        Snapshot,
+        Image
+    };
+
     virtual void ResizeBackendResources() = 0;
 
     void CreateResources()
@@ -446,6 +462,7 @@ protected:
 
     std::vector<Uint8> m_ReferenceData;
     Uint32             m_ReferenceDataPitch = 0;
+    ReferenceSource    m_ReferenceSource    = ReferenceSource::Snapshot;
 
     TestImageComparisonAttribs m_ImageComparisonAttribs;
 };
