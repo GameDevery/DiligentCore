@@ -30,6 +30,7 @@
 #include <algorithm>
 #include <limits>
 #include <memory>
+#include <sstream>
 
 #include "TestingSwapChainBase.hpp"
 #include "GraphicsAccessories.hpp"
@@ -105,6 +106,35 @@ bool LoadTestImage(const char*         FilePath,
     return true;
 }
 
+std::string GetTestImageComparisonFailureFileName(Uint32 FailureIndex)
+{
+    const auto* const            TestInfo     = ::testing::UnitTest::GetInstance()->current_test_info();
+    GPUTestingEnvironment* const pEnvironment = GPUTestingEnvironment::GetInstance();
+    VERIFY_EXPR(TestInfo != nullptr);
+    VERIFY_EXPR(pEnvironment != nullptr && pEnvironment->GetDevice() != nullptr);
+
+    const auto ValidateName = [](const std::string& src) {
+        std::string dst = src;
+        for (char& c : dst)
+        {
+            if (c == '.' || c == '\\' || c == '/')
+                c = '_';
+        }
+        return dst;
+    };
+
+    std::string FileName{ValidateName(TestInfo->test_suite_name())};
+    FileName += '.';
+    FileName += ValidateName(TestInfo->name());
+    FileName += '_';
+    FileName += GetRenderDeviceTypeShortString(pEnvironment->GetDevice()->GetDeviceInfo().Type);
+    FileName += "_FAIL";
+    if (FailureIndex > 0)
+        FileName += std::to_string(FailureIndex);
+    FileName += "_.png";
+    return FileName;
+}
+
 void CompareTestImages(const Uint8*                          pReferencePixels,
                        Uint64                                RefPixelsStride,
                        const Uint8*                          pPixels,
@@ -161,29 +191,64 @@ void CompareTestImages(const Uint8*                          pReferencePixels,
     if (bIsIdentical)
         return;
 
-    Uint64 BadPixelCount         = 0;
-    Uint32 MaxObservedChannelErr = 0;
+    Uint64 ToleratedPixelCount      = 0;
+    Uint64 BadPixelCount            = 0;
+    Uint32 MaxToleratedChannelError = 0;
+    Uint32 MaxBadChannelError       = 0;
     for (Uint32 Row = 0; Row < Height; ++Row)
     {
         for (Uint32 Col = 0; Col < Width; ++Col)
         {
-            bool BadPixel = false;
+            Uint32 PixelMaxChannelError = 0;
             for (Uint32 Component = 0; Component < ComponentCount; ++Component)
             {
                 const Uint32 RefValue = pReferencePixels[Row * RefPixelsStride + Col * 4 + Component];
                 const Uint32 Value    = pPixels[Row * PixelsStride + Col * 4 + Component];
                 const Uint32 Error    = RefValue > Value ? RefValue - Value : Value - RefValue;
-                MaxObservedChannelErr = std::max(MaxObservedChannelErr, Error);
-                BadPixel |= Error > ComparisonAttribs.MaxChannelError;
+                PixelMaxChannelError  = std::max(PixelMaxChannelError, Error);
             }
-            BadPixelCount += BadPixel ? 1 : 0;
+
+            if (PixelMaxChannelError > ComparisonAttribs.MaxChannelError)
+            {
+                ++BadPixelCount;
+                MaxBadChannelError = std::max(MaxBadChannelError, PixelMaxChannelError);
+            }
+            else if (PixelMaxChannelError > 0)
+            {
+                ++ToleratedPixelCount;
+                MaxToleratedChannelError = std::max(MaxToleratedChannelError, PixelMaxChannelError);
+            }
         }
     }
 
+    if (ToleratedPixelCount == 0 && BadPixelCount == 0)
+        return;
+
     const Uint64 PixelCount = Uint64{Width} * Height;
+
+    std::ostringstream Statistics;
+    if (ToleratedPixelCount > 0)
+    {
+        Statistics << ToleratedPixelCount << " of " << PixelCount
+                   << " pixels differ but remain within the per-channel error threshold "
+                   << Uint32{ComparisonAttribs.MaxChannelError} << "; maximum channel error is "
+                   << MaxToleratedChannelError;
+    }
+    if (BadPixelCount > 0)
+    {
+        if (ToleratedPixelCount > 0)
+            Statistics << '\n';
+
+        const double BadPixelPercentage = static_cast<double>(BadPixelCount) / static_cast<double>(PixelCount) * 100.0;
+        Statistics << BadPixelCount << " of " << PixelCount << " pixels (" << BadPixelPercentage
+                   << "%) exceed the threshold; maximum channel error is " << MaxBadChannelError;
+    }
+
     if (static_cast<double>(BadPixelCount) <=
         static_cast<double>(PixelCount) * ComparisonAttribs.MaxBadPixelRatio)
     {
+        LOG_WARNING_MESSAGE("Image rendered by the test differs from the reference image, but is within the configured tolerance:\n",
+                            Statistics.str());
         return;
     }
 
@@ -210,34 +275,15 @@ void CompareTestImages(const Uint8*                          pReferencePixels,
                 }
             }
         }
-        const auto* const TestInfo = ::testing::UnitTest::GetInstance()->current_test_info();
-
-        const auto ValidateName = [](const std::string& src) {
-            std::string dst = src;
-            for (char& c : dst)
-            {
-                if (c == '.' || c == '\\' || c == '/')
-                    c = '_';
-            }
-            return dst;
-        };
-
-        std::string FileName{ValidateName(TestInfo->test_suite_name())};
-        FileName += '.';
-        FileName += ValidateName(TestInfo->name());
-        auto& FailureCounter = FailureCounters[FileName];
-        FileName += "_FAIL";
-        if (FailureCounter > 0)
-            FileName += std::to_string(FailureCounter);
-        FileName += "_.png";
+        const std::string CounterKey     = GetTestImageComparisonFailureFileName();
+        auto&             FailureCounter = FailureCounters[CounterKey];
+        const std::string FileName       = GetTestImageComparisonFailureFileName(static_cast<Uint32>(FailureCounter));
         if (stbi_write_png(FileName.c_str(), Width * 2, Height * 2, 3, ReportImage.data(), (Width * 2) * 3) == 0)
         {
             LOG_ERROR_MESSAGE("Failed to write ", FileName);
         }
-        ADD_FAILURE() << "Image rendered by the test differs from the reference image: "
-                      << BadPixelCount << " of " << PixelCount << " pixels exceed the per-channel error threshold "
-                      << Uint32{ComparisonAttribs.MaxChannelError} << "; maximum observed channel error is "
-                      << MaxObservedChannelErr;
+        ADD_FAILURE() << "Image rendered by the test differs from the reference image:\n"
+                      << Statistics.str();
         ++FailureCounter;
     }
 }

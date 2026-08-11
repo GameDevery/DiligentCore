@@ -96,13 +96,9 @@ TEST(TestingSwapChainBaseTest, ToleratesConfiguredImageDifferences)
 class ComparisonFailureImageGuard
 {
 public:
-    ComparisonFailureImageGuard()
-    {
-        const testing::TestInfo* const TestInfo = testing::UnitTest::GetInstance()->current_test_info();
-        VERIFY_EXPR(TestInfo != nullptr);
-        if (TestInfo != nullptr)
-            m_FileName = std::string{TestInfo->test_suite_name()} + "." + TestInfo->name() + "_FAIL_.png";
-    }
+    ComparisonFailureImageGuard() :
+        m_FileName{GetTestImageComparisonFailureFileName()}
+    {}
 
     ~ComparisonFailureImageGuard()
     {
@@ -115,9 +111,115 @@ public:
     ComparisonFailureImageGuard& operator=(const ComparisonFailureImageGuard&) = delete;
     // clang-format on
 
+    const std::string& GetFileName() const
+    {
+        return m_FileName;
+    }
+
 private:
     std::string m_FileName;
 };
+
+TEST(TestingSwapChainBaseTest, ReportsOnlyNonEmptyDifferenceCategories)
+{
+    constexpr std::array<Uint8, 8> Reference{
+        10,
+        20,
+        30,
+        255,
+        40,
+        50,
+        60,
+        255,
+    };
+    constexpr std::array<Uint8, 8> Actual{
+        12,
+        20,
+        30,
+        255, // Maximum error 2: tolerated.
+        40,
+        50,
+        60,
+        255,
+    };
+
+    TestImageComparisonAttribs ComparisonAttribs;
+    ComparisonAttribs.MaxChannelError = 2;
+
+    testing::internal::CaptureStdout();
+    std::unordered_map<std::string, int> FailureCounters;
+    CompareTestImages(Reference.data(), 8, Actual.data(), 8, 2, 1,
+                      TEX_FORMAT_RGBA8_UNORM, FailureCounters, ComparisonAttribs);
+    const std::string Output = testing::internal::GetCapturedStdout();
+
+    EXPECT_NE(Output.find("1 of 2 pixels differ but remain within the per-channel error threshold 2"), std::string::npos);
+    EXPECT_EQ(Output.find("exceed the threshold"), std::string::npos);
+}
+
+TEST(TestingSwapChainBaseTest, AddsRenderDeviceTypeToFailureImageName)
+{
+    constexpr std::array<Uint8, 4> Reference{255, 255, 255, 255};
+    constexpr std::array<Uint8, 4> Actual{0, 255, 255, 255};
+
+    std::unordered_map<std::string, int> FailureCounters;
+    ComparisonFailureImageGuard          FailureImageGuard;
+    EXPECT_NONFATAL_FAILURE(
+        CompareTestImages(Reference.data(), 4, Actual.data(), 4, 1, 1,
+                          TEX_FORMAT_RGBA8_UNORM, FailureCounters),
+        "Image rendered by the test differs from the reference image");
+    EXPECT_TRUE(FileSystem::FileExists(FailureImageGuard.GetFileName().c_str()));
+}
+
+TEST(TestingSwapChainBaseTest, ReportsToleratedAndBadPixelStatistics)
+{
+    constexpr std::array<Uint8, 16> Reference{
+        10,
+        20,
+        30,
+        255,
+        40,
+        50,
+        60,
+        255,
+        70,
+        80,
+        90,
+        255,
+        100,
+        110,
+        120,
+        255,
+    };
+    constexpr std::array<Uint8, 16> Actual{
+        12,
+        20,
+        30,
+        255, // Maximum error 2: tolerated.
+        40,
+        27,
+        60,
+        255, // Maximum error 23: bad.
+        70,
+        80,
+        90,
+        255,
+        100,
+        110,
+        120,
+        255,
+    };
+
+    TestImageComparisonAttribs ComparisonAttribs;
+    ComparisonAttribs.MaxChannelError = 2;
+
+    std::unordered_map<std::string, int> FailureCounters;
+    ComparisonFailureImageGuard          FailureImageGuard;
+    EXPECT_NONFATAL_FAILURE(
+        CompareTestImages(Reference.data(), 16, Actual.data(), 16, 4, 1,
+                          TEX_FORMAT_RGBA8_UNORM, FailureCounters, ComparisonAttribs),
+        "1 of 4 pixels differ but remain within the per-channel error threshold 2; maximum channel error is 2\n"
+        "1 of 4 pixels (25%) exceed the threshold; maximum channel error is 23");
+}
 
 void TestSnapshotComparisonFailure(Uint32 Channel)
 {

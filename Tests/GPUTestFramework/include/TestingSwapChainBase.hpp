@@ -27,6 +27,7 @@
 #pragma once
 
 #include <cstring>
+#include <string>
 #include <vector>
 #include <unordered_map>
 
@@ -73,6 +74,9 @@ bool LoadTestImage(const char*         FilePath,
                    std::vector<Uint8>& Pixels,
                    Uint32&             Width,
                    Uint32&             Height);
+
+/// Returns the backend-qualified file name for a comparison failure image.
+std::string GetTestImageComparisonFailureFileName(Uint32 FailureIndex = 0);
 
 /// Writes the image to a PNG file. Alpha is omitted by default.
 void DumpTestImage(const Uint8*   pPixels,
