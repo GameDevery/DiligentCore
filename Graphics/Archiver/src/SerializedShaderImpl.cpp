@@ -1,5 +1,5 @@
 /*
- *  Copyright 2019-2025 Diligent Graphics LLC
+ *  Copyright 2019-2026 Diligent Graphics LLC
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -54,7 +54,7 @@ SerializedShaderImpl::SerializedShaderImpl(IReferenceCounters*      pRefCounters
     }
 
     ARCHIVE_DEVICE_DATA_FLAGS DeviceFlags = ArchiveInfo.DeviceFlags;
-    if ((DeviceFlags & m_pDevice->GetSupportedDeviceFlags()) != DeviceFlags)
+    if ((DeviceFlags & m_pDevice->GetSerializationDeviceInfo().SupportedArchiveTargets) != DeviceFlags)
     {
         LOG_ERROR_AND_THROW("DeviceFlags contain unsupported device type");
     }

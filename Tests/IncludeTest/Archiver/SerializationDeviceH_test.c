@@ -1,5 +1,5 @@
 /*
- *  Copyright 2019-2023 Diligent Graphics LLC
+ *  Copyright 2019-2026 Diligent Graphics LLC
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -28,6 +28,8 @@
 
 void TestSerializationDevice_CInterface(ISerializationDevice* pSerializationDevice)
 {
+    const SerializationDeviceInfo* pSerializationDeviceInfo;
+
     ISerializationDevice_CreateShader(pSerializationDevice, (const ShaderCreateInfo*)NULL, (const ShaderArchiveInfo*)NULL, (IShader**)NULL, (IDataBlob**)NULL);
     ISerializationDevice_CreatePipelineResourceSignature(pSerializationDevice, (const PipelineResourceSignatureDesc*)NULL, (const ResourceSignatureArchiveInfo*)NULL, (IPipelineResourceSignature**)NULL);
     ISerializationDevice_CreateGraphicsPipelineState(pSerializationDevice, (const GraphicsPipelineStateCreateInfo*)NULL, (const PipelineStateArchiveInfo*)NULL, (IPipelineState**)NULL);
@@ -35,4 +37,6 @@ void TestSerializationDevice_CInterface(ISerializationDevice* pSerializationDevi
     ISerializationDevice_CreateRayTracingPipelineState(pSerializationDevice, (const RayTracingPipelineStateCreateInfo*)NULL, (const PipelineStateArchiveInfo*)NULL, (IPipelineState**)NULL);
     ISerializationDevice_CreateTilePipelineState(pSerializationDevice, (const TilePipelineStateCreateInfo*)NULL, (const PipelineStateArchiveInfo*)NULL, (IPipelineState**)NULL);
     ISerializationDevice_GetPipelineResourceBindings(pSerializationDevice, (const PipelineResourceBindingAttribs*)NULL, (Uint32*)NULL, (const PipelineResourceBinding**)NULL);
+    pSerializationDeviceInfo = ISerializationDevice_GetSerializationDeviceInfo(pSerializationDevice);
+    (void)pSerializationDeviceInfo;
 }

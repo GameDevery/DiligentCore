@@ -1726,9 +1726,17 @@ void TestRayTracingPipeline(bool CompileAsync = false, bool UseCurrentDeviceArch
     if (UseCurrentDeviceArchiveFlags)
     {
         DeviceBits &= RenderDeviceTypeToArchiveDataFlag(pDevice->GetDeviceInfo().Type);
-        if (DeviceBits == ARCHIVE_DEVICE_DATA_FLAG_NONE)
-            GTEST_SKIP() << "Current device is not supported by ray tracing archive test";
     }
+
+    const SerializationDeviceInfo& SerializationInfo = pSerializationDevice->GetSerializationDeviceInfo();
+    DeviceBits &= SerializationInfo.SupportedArchiveTargets;
+    if (SerializationInfo.DXILCompilerVersion == Version{})
+        DeviceBits &= ~ARCHIVE_DEVICE_DATA_FLAG_D3D12;
+    if (SerializationInfo.SPIRVCompilerVersion == Version{})
+        DeviceBits &= ~ARCHIVE_DEVICE_DATA_FLAG_VULKAN;
+
+    if (DeviceBits == ARCHIVE_DEVICE_DATA_FLAG_NONE)
+        GTEST_SKIP() << "No supported ray tracing archive target has the required shader compiler";
 
     RefCntAutoPtr<IPipelineState> pRefPSO;
     {

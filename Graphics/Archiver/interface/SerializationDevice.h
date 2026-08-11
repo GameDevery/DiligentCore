@@ -1,5 +1,5 @@
 /*
- *  Copyright 2019-2025 Diligent Graphics LLC
+ *  Copyright 2019-2026 Diligent Graphics LLC
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -145,6 +145,25 @@ struct PipelineResourceBinding
 typedef struct PipelineResourceBinding PipelineResourceBinding;
 
 
+/// Serialization device information.
+struct SerializationDeviceInfo
+{
+    /// Combination of supported archive targets, see Diligent::ARCHIVE_DEVICE_DATA_FLAGS.
+    ARCHIVE_DEVICE_DATA_FLAGS SupportedArchiveTargets DEFAULT_INITIALIZER(ARCHIVE_DEVICE_DATA_FLAG_NONE);
+
+    /// Version of the DX Compiler used to compile HLSL to DXIL for Direct3D12.
+
+    /// A zero version indicates that the compiler is unavailable.
+    Version DXILCompilerVersion DEFAULT_INITIALIZER(Version());
+
+    /// Version of the DX Compiler used to compile HLSL to SPIR-V for Vulkan.
+
+    /// A zero version indicates that the compiler is unavailable.
+    Version SPIRVCompilerVersion DEFAULT_INITIALIZER(Version());
+};
+typedef struct SerializationDeviceInfo SerializationDeviceInfo;
+
+
 /// Serialization device interface
 DILIGENT_BEGIN_INTERFACE(ISerializationDevice, IRenderDevice)
 {
@@ -256,8 +275,8 @@ DILIGENT_BEGIN_INTERFACE(ISerializationDevice, IRenderDevice)
                                                      const PipelineResourceBinding* REF       pBindings) PURE;
 
 
-    /// Returns a combination of supported device flags, see Diligent::ARCHIVE_DEVICE_DATA_FLAGS.
-    VIRTUAL ARCHIVE_DEVICE_DATA_FLAGS METHOD(GetSupportedDeviceFlags)(THIS) CONST PURE;
+    /// Returns serialization device information, see Diligent::SerializationDeviceInfo.
+    VIRTUAL const SerializationDeviceInfo REF METHOD(GetSerializationDeviceInfo)(THIS) CONST PURE;
 
     /// Adds a optional render device that will be used to initialize device-specific objects that
     /// may be used for rendering (e.g. shaders).
@@ -302,6 +321,7 @@ DILIGENT_END_INTERFACE
 #    define ISerializationDevice_CreateRayTracingPipelineState(This, ...)   CALL_IFACE_METHOD(SerializationDevice, CreateRayTracingPipelineState,   This, __VA_ARGS__)
 #    define ISerializationDevice_CreateTilePipelineState(This, ...)         CALL_IFACE_METHOD(SerializationDevice, CreateTilePipelineState,         This, __VA_ARGS__)
 #    define ISerializationDevice_GetPipelineResourceBindings(This, ...)     CALL_IFACE_METHOD(SerializationDevice, GetPipelineResourceBindings,     This, __VA_ARGS__)
+#    define ISerializationDevice_GetSerializationDeviceInfo(This)           CALL_IFACE_METHOD(SerializationDevice, GetSerializationDeviceInfo,      This)
 
 #endif
 

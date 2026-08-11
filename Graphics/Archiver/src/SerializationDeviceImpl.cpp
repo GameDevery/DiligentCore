@@ -37,7 +37,7 @@
 namespace Diligent
 {
 
-static constexpr ARCHIVE_DEVICE_DATA_FLAGS GetSupportedDeviceFlags()
+static constexpr ARCHIVE_DEVICE_DATA_FLAGS GetSupportedArchiveDeviceFlags()
 {
     ARCHIVE_DEVICE_DATA_FLAGS Flags = ARCHIVE_DEVICE_DATA_FLAG_NONE;
 #if GL_SUPPORTED
@@ -68,7 +68,7 @@ static constexpr ARCHIVE_DEVICE_DATA_FLAGS GetSupportedDeviceFlags()
 
 SerializationDeviceImpl::SerializationDeviceImpl(IReferenceCounters* pRefCounters, const SerializationDeviceCreateInfo& CreateInfo) :
     TBase{pRefCounters, GetRawAllocator(), nullptr, EngineCreateInfo{}, CreateInfo.AdapterInfo},
-    m_ValidDeviceFlags{Diligent::GetSupportedDeviceFlags()}
+    m_Info{Diligent::GetSupportedArchiveDeviceFlags()}
 {
     m_DeviceInfo = CreateInfo.DeviceInfo;
 
@@ -76,19 +76,21 @@ SerializationDeviceImpl::SerializationDeviceImpl(IReferenceCounters* pRefCounter
     GLSLangUtils::InitializeGlslang();
 #endif
 
-    if (m_ValidDeviceFlags & ARCHIVE_DEVICE_DATA_FLAG_D3D11)
+    if (m_Info.SupportedArchiveTargets & ARCHIVE_DEVICE_DATA_FLAG_D3D11)
     {
         m_D3D11Props.FeatureLevel = (CreateInfo.D3D11.FeatureLevel.Major << 12u) | (CreateInfo.D3D11.FeatureLevel.Minor << 8u);
     }
 
-    if (m_ValidDeviceFlags & ARCHIVE_DEVICE_DATA_FLAG_D3D12)
+    if (m_Info.SupportedArchiveTargets & ARCHIVE_DEVICE_DATA_FLAG_D3D12)
     {
         m_pDxCompiler              = CreateDXCompiler(DXCompilerTarget::Direct3D12, 0, CreateInfo.D3D12.DxCompilerPath);
         m_D3D12Props.pDxCompiler   = m_pDxCompiler.get();
         m_D3D12Props.ShaderVersion = CreateInfo.D3D12.ShaderVersion;
+        if (m_pDxCompiler)
+            m_Info.DXILCompilerVersion = m_pDxCompiler->GetVersion();
     }
 
-    if (m_ValidDeviceFlags & (ARCHIVE_DEVICE_DATA_FLAG_GL | ARCHIVE_DEVICE_DATA_FLAG_GLES))
+    if (m_Info.SupportedArchiveTargets & (ARCHIVE_DEVICE_DATA_FLAG_GL | ARCHIVE_DEVICE_DATA_FLAG_GLES))
     {
         m_GLProps.OptimizeShaders = CreateInfo.GL.OptimizeShaders;
         m_GLProps.ZeroToOneClipZ  = CreateInfo.GL.ZeroToOneClipZ;
@@ -99,16 +101,18 @@ SerializationDeviceImpl::SerializationDeviceImpl(IReferenceCounters* pRefCounter
 #endif
     }
 
-    if (m_ValidDeviceFlags & ARCHIVE_DEVICE_DATA_FLAG_VULKAN)
+    if (m_Info.SupportedArchiveTargets & ARCHIVE_DEVICE_DATA_FLAG_VULKAN)
     {
         const Version& ApiVersion = CreateInfo.Vulkan.ApiVersion;
         m_VkProps.VkVersion       = (ApiVersion.Major << 22u) | (ApiVersion.Minor << 12u);
         m_pVkDxCompiler           = CreateDXCompiler(DXCompilerTarget::Vulkan, m_VkProps.VkVersion, CreateInfo.Vulkan.DxCompilerPath);
         m_VkProps.pDxCompiler     = m_pVkDxCompiler.get();
         m_VkProps.SupportsSpirv14 = ApiVersion >= Version{1, 2} || CreateInfo.Vulkan.SupportsSpirv14;
+        if (m_pVkDxCompiler)
+            m_Info.SPIRVCompilerVersion = m_pVkDxCompiler->GetVersion();
     }
 
-    if (m_ValidDeviceFlags & ARCHIVE_DEVICE_DATA_FLAG_METAL_MACOS)
+    if (m_Info.SupportedArchiveTargets & ARCHIVE_DEVICE_DATA_FLAG_METAL_MACOS)
     {
         const char* CompileOptionsMacOS = CreateInfo.Metal.CompileOptionsMacOS;
         if (CompileOptionsMacOS != nullptr && CompileOptionsMacOS[0] != '\0')
@@ -118,11 +122,11 @@ SerializationDeviceImpl::SerializationDeviceImpl(IReferenceCounters* pRefCounter
         else
         {
             LOG_WARNING_MESSAGE("CreateInfo.Metal.CompileOptionsMacOS is null or empty. Compilation for macOS will be disabled.");
-            m_ValidDeviceFlags &= ~ARCHIVE_DEVICE_DATA_FLAG_METAL_MACOS;
+            m_Info.SupportedArchiveTargets &= ~ARCHIVE_DEVICE_DATA_FLAG_METAL_MACOS;
         }
     }
 
-    if (m_ValidDeviceFlags & ARCHIVE_DEVICE_DATA_FLAG_METAL_IOS)
+    if (m_Info.SupportedArchiveTargets & ARCHIVE_DEVICE_DATA_FLAG_METAL_IOS)
     {
         const char* CompileOptionsiOS = CreateInfo.Metal.CompileOptionsiOS;
         if (CompileOptionsiOS != nullptr && CompileOptionsiOS[0] != '\0')
@@ -132,11 +136,11 @@ SerializationDeviceImpl::SerializationDeviceImpl(IReferenceCounters* pRefCounter
         else
         {
             LOG_WARNING_MESSAGE("CreateInfo.Metal.CompileOptionsiOS is null or empty. Compilation for iOS will be disabled.");
-            m_ValidDeviceFlags &= ~ARCHIVE_DEVICE_DATA_FLAG_METAL_IOS;
+            m_Info.SupportedArchiveTargets &= ~ARCHIVE_DEVICE_DATA_FLAG_METAL_IOS;
         }
     }
 
-    if (m_ValidDeviceFlags & (ARCHIVE_DEVICE_DATA_FLAG_METAL_MACOS | ARCHIVE_DEVICE_DATA_FLAG_METAL_IOS))
+    if (m_Info.SupportedArchiveTargets & (ARCHIVE_DEVICE_DATA_FLAG_METAL_MACOS | ARCHIVE_DEVICE_DATA_FLAG_METAL_IOS))
     {
         const char* MslPreprocessorCmd = CreateInfo.Metal.MslPreprocessorCmd;
         if (MslPreprocessorCmd != nullptr && MslPreprocessorCmd[0] != '\0')

@@ -128,9 +128,9 @@ public:
                                                                 Uint32&                               NumBindings,
                                                                 const PipelineResourceBinding*&       pBindings) override final;
 
-    virtual ARCHIVE_DEVICE_DATA_FLAGS DILIGENT_CALL_TYPE GetSupportedDeviceFlags() const override final
+    virtual const SerializationDeviceInfo& DILIGENT_CALL_TYPE GetSerializationDeviceInfo() const override final
     {
-        return m_ValidDeviceFlags;
+        return m_Info;
     }
 
     struct D3D11Properties
@@ -201,7 +201,7 @@ private:
         UNSUPPORTED("TestTextureFormat is not supported by serialization device");
     }
 
-    ARCHIVE_DEVICE_DATA_FLAGS m_ValidDeviceFlags = ARCHIVE_DEVICE_DATA_FLAG_NONE;
+    SerializationDeviceInfo m_Info;
 
     std::unique_ptr<IDXCompiler> m_pDxCompiler;
     std::unique_ptr<IDXCompiler> m_pVkDxCompiler;
