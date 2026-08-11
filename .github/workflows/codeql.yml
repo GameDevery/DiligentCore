@@ -13,8 +13,8 @@ jobs:
         include:
           - host_name:       "Win10"
             platform:        "Win32"
-            os:              "windows-2022"
-            cmake_generator: "Visual Studio 17 2022"
+            os:              "windows-2025"
+            cmake_generator: "Visual Studio 18 2026"
 
           - host_name:       "Linux"
             platform:        "Linux"

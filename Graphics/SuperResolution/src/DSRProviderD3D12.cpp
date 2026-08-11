@@ -75,7 +75,7 @@ CComPtr<IDSRDevice> CreateDSRDevice(IRenderDevice* pDevice)
     ID3D12Device* pd3d12Device = ClassPtrCast<IRenderDeviceD3D12>(pDevice)->GetD3D12Device();
 
     CComPtr<IDSRDevice> pDSRDevice;
-    if (HRESULT hr = pDSRFactory->CreateDSRDevice(pd3d12Device, 0, IID_PPV_ARGS(&pDSRDevice)); FAILED(hr))
+    if (HRESULT hr = pDSRFactory->CreateDSRDevice(pd3d12Device, 1, IID_PPV_ARGS(&pDSRDevice)); FAILED(hr))
     {
         LOG_D3D_WARNING(hr, "Failed to create DirectSR device.");
         return {};
@@ -369,7 +369,10 @@ private:
 
 std::unique_ptr<SuperResolutionProvider> CreateDSRProviderD3D12(IRenderDevice* pDevice)
 {
-    return pDevice->GetDeviceInfo().Type == RENDER_DEVICE_TYPE_D3D12 ?
+    const RenderDeviceInfo&    DeviceInfo  = pDevice->GetDeviceInfo();
+    const GraphicsAdapterInfo& AdapterInfo = pDevice->GetAdapterInfo();
+    return (DeviceInfo.Type == RENDER_DEVICE_TYPE_D3D12 &&
+            AdapterInfo.Type != ADAPTER_TYPE_SOFTWARE) ?
         std::make_unique<DSRProviderD3D12>(pDevice) :
         nullptr;
 }

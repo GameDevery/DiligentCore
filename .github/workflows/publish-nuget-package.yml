@@ -13,7 +13,7 @@ env:
 
 jobs:
   deploy:
-    runs-on: windows-latest
+    runs-on: windows-2025
     name: Deploying NuGet package
 
     steps:

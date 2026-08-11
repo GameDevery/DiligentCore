@@ -12,7 +12,7 @@ jobs:
         toolset: [x64]
         config: [Debug, Release]
 
-    runs-on: windows-latest
+    runs-on: windows-2025
     name: Windows 10, ${{ matrix.config }} ${{ matrix.toolset }}
 
     steps:
