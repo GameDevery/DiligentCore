@@ -99,7 +99,10 @@ public:
 
     /// Sets the reference image used by Present()/CompareWithSnapshot().
     /// Data must contain rows matching the swap-chain dimensions and color format.
-    virtual void SetReferenceData(const void* pData, size_t Stride = 0) = 0;
+    /// CompareAlpha controls whether the alpha channel participates in comparison.
+    virtual void SetReferenceData(const void* pData,
+                                  size_t      Stride       = 0,
+                                  bool        CompareAlpha = true) = 0;
 
     /// Loads the RGB reference image used by Present()/CompareWithSnapshot() from a PNG file.
     /// The alpha channel is ignored when comparing file-based references.
@@ -163,7 +166,9 @@ public:
         CompareWithSnapshot(nullptr);
     }
 
-    virtual void SetReferenceData(const void* pData, size_t Stride = 0) override final
+    virtual void SetReferenceData(const void* pData,
+                                  size_t      Stride       = 0,
+                                  bool        CompareAlpha = true) override final
     {
         VERIFY_EXPR(pData != nullptr);
 
@@ -194,7 +199,7 @@ public:
                         pSrcData + row * Stride,
                         RowSize);
         }
-        m_ReferenceSource = ReferenceSource::Snapshot;
+        m_CompareAlpha = CompareAlpha;
     }
 
     virtual bool LoadReferenceImage(const char* FilePath) override final
@@ -214,28 +219,23 @@ public:
         if (Width != m_SwapChainDesc.Width || Height != m_SwapChainDesc.Height)
             Resize(Width, Height, m_SwapChainDesc.PreTransform);
 
-        const size_t RowStride = static_cast<size_t>(Width) * 4;
+        const size_t RowSize = static_cast<size_t>(Width) * 4;
         if (m_pDevice->GetDeviceInfo().IsGLDevice())
         {
-            // PNG rows are stored top-to-bottom, while OpenGL framebuffer
-            // readback starts at the bottom row.
-            m_ReferenceDataPitch = static_cast<Uint32>(RowStride);
-            m_ReferenceData.resize(Pixels.size());
-            for (Uint32 Row = 0; Row < Height; ++Row)
+            std::vector<Uint8> TempRow(RowSize);
+            for (Uint32 TopRow = 0; TopRow < Height / 2; ++TopRow)
             {
-                std::memcpy(m_ReferenceData.data() + static_cast<size_t>(Row) * RowStride,
-                            Pixels.data() + static_cast<size_t>(Height - 1 - Row) * RowStride,
-                            RowStride);
+                Uint8* const pTopRow    = Pixels.data() + static_cast<size_t>(TopRow) * RowSize;
+                Uint8* const pBottomRow = Pixels.data() + static_cast<size_t>(Height - 1 - TopRow) * RowSize;
+                std::memcpy(TempRow.data(), pTopRow, RowSize);
+                std::memcpy(pTopRow, pBottomRow, RowSize);
+                std::memcpy(pBottomRow, TempRow.data(), RowSize);
             }
-        }
-        else
-        {
-            SetReferenceData(Pixels.data(), RowStride);
         }
 
         // Golden PNGs represent the visible framebuffer. DumpTestImage() omits
         // alpha so image viewers display the complete rendered background.
-        m_ReferenceSource = ReferenceSource::Image;
+        SetReferenceData(Pixels.data(), RowSize, false);
 
         return true;
     }
@@ -369,18 +369,12 @@ public:
         m_pContext->MapTextureSubresource(m_pStagingTexture, 0, 0, MAP_READ, MapFlag, nullptr, MapData);
         CompareTestImages(m_ReferenceData.data(), m_ReferenceDataPitch, static_cast<const Uint8*>(MapData.pData), MapData.Stride,
                           m_SwapChainDesc.Width, m_SwapChainDesc.Height, m_SwapChainDesc.ColorBufferFormat, m_FailureCounters,
-                          m_ImageComparisonAttribs, m_ReferenceSource == ReferenceSource::Snapshot);
+                          m_ImageComparisonAttribs, m_CompareAlpha);
 
         m_pContext->UnmapTextureSubresource(m_pStagingTexture, 0, 0);
     }
 
 protected:
-    enum class ReferenceSource
-    {
-        Snapshot,
-        Image
-    };
-
     virtual void ResizeBackendResources() = 0;
 
     void CreateResources()
@@ -466,7 +460,7 @@ protected:
 
     std::vector<Uint8> m_ReferenceData;
     Uint32             m_ReferenceDataPitch = 0;
-    ReferenceSource    m_ReferenceSource    = ReferenceSource::Snapshot;
+    bool               m_CompareAlpha       = true;
 
     TestImageComparisonAttribs m_ImageComparisonAttribs;
 };

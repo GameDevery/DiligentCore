@@ -1,5 +1,5 @@
 /*
- *  Copyright 2019-2025 Diligent Graphics LLC
+ *  Copyright 2019-2026 Diligent Graphics LLC
  *  Copyright 2015-2019 Egor Yusov
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -72,9 +72,6 @@ void ClearRenderTargetReferenceWebGPU(ISwapChain* pSwapChain, const float ClearC
 using namespace Diligent;
 using namespace Diligent::Testing;
 
-namespace
-{
-
 void ClearRenderTargetReference(IRenderDevice* pDevice,
                                 ISwapChain*    pSwapChain,
                                 const float    ClearColor[])
@@ -125,7 +122,10 @@ void ClearRenderTargetReference(IRenderDevice* pDevice,
     }
 }
 
-static void ReferenceClear(const float ClearColor[])
+namespace
+{
+
+void ReferenceClear(const float ClearColor[])
 {
     GPUTestingEnvironment* pEnv       = GPUTestingEnvironment::GetInstance();
     IRenderDevice*         pDevice    = pEnv->GetDevice();

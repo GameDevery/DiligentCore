@@ -42,6 +42,10 @@
 using namespace Diligent;
 using namespace Diligent::Testing;
 
+void ClearRenderTargetReference(IRenderDevice* pDevice,
+                                ISwapChain*    pSwapChain,
+                                const float    ClearColor[]);
+
 namespace
 {
 
@@ -221,9 +225,9 @@ TEST(TestingSwapChainBaseTest, ReportsToleratedAndBadPixelStatistics)
         "1 of 4 pixels (25%) exceed the threshold; maximum channel error is 23");
 }
 
-void TestSnapshotComparisonFailure(Uint32 Channel)
+void TestSnapshotComparison(Int32 Channel)
 {
-    ASSERT_LT(Channel, 4u);
+    ASSERT_LT(Channel, 4);
 
     GPUTestingEnvironment::ScopedReset AutoReset;
 
@@ -236,25 +240,35 @@ void TestSnapshotComparisonFailure(Uint32 Channel)
     RefCntAutoPtr<ITestingSwapChain> pTestingSwapChain{pSwapChain, IID_TestingSwapChain};
     ASSERT_NE(pTestingSwapChain, nullptr);
 
-    const SwapChainDesc& SwapChainDesc = pSwapChain->GetDesc();
-    std::vector<Uint8>   ReferencePixels(static_cast<size_t>(SwapChainDesc.Width) * SwapChainDesc.Height * 4, 255);
-    pTestingSwapChain->SetReferenceData(ReferencePixels.data());
+    constexpr float ReferenceColor[] = {1, 1, 1, 1};
+    pContext->Flush();
+    pContext->InvalidateState();
+    ClearRenderTargetReference(pEnvironment->GetDevice(), pSwapChain, ReferenceColor);
+    pTestingSwapChain->TakeSnapshot();
 
-    float ClearColor[]  = {1, 1, 1, 1};
-    ClearColor[Channel] = 0;
-    ITextureView* pRTV  = pSwapChain->GetCurrentBackBufferRTV();
+    float ClearColor[] = {1, 1, 1, 1};
+    if (Channel >= 0)
+        ClearColor[Channel] = 0;
+    ITextureView* pRTV = pSwapChain->GetCurrentBackBufferRTV();
     pContext->SetRenderTargets(1, &pRTV, nullptr, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
     pContext->ClearRenderTarget(pRTV, ClearColor, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 
-    ComparisonFailureImageGuard FailureImageGuard;
-    EXPECT_NONFATAL_FAILURE(
-        pTestingSwapChain->CompareWithSnapshot(nullptr),
-        "Image rendered by the test differs from the reference image");
+    if (Channel >= 0)
+    {
+        ComparisonFailureImageGuard FailureImageGuard;
+        EXPECT_NONFATAL_FAILURE(
+            pTestingSwapChain->CompareWithSnapshot(nullptr),
+            "Image rendered by the test differs from the reference image");
+    }
+    else
+    {
+        pTestingSwapChain->CompareWithSnapshot(nullptr);
+    }
 }
 
-void TestImageComparisonFailure(Uint32 Channel)
+void TestImageComparison(Int32 Channel)
 {
-    ASSERT_LT(Channel, 3u);
+    ASSERT_LT(Channel, 3);
 
     GPUTestingEnvironment::ScopedReset AutoReset;
 
@@ -278,16 +292,24 @@ void TestImageComparisonFailure(Uint32 Channel)
                   TEX_FORMAT_RGBA8_UNORM, ImageName.c_str(), false);
     ASSERT_TRUE(pTestingSwapChain->LoadReferenceImage(ImagePath.c_str()));
 
-    float ClearColor[]  = {1, 1, 1, 1};
-    ClearColor[Channel] = 0;
-    ITextureView* pRTV  = pSwapChain->GetCurrentBackBufferRTV();
+    float ClearColor[] = {1, 1, 1, 1};
+    if (Channel >= 0)
+        ClearColor[Channel] = 0;
+    ITextureView* pRTV = pSwapChain->GetCurrentBackBufferRTV();
     pContext->SetRenderTargets(1, &pRTV, nullptr, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
     pContext->ClearRenderTarget(pRTV, ClearColor, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 
-    ComparisonFailureImageGuard FailureImageGuard;
-    EXPECT_NONFATAL_FAILURE(
-        pTestingSwapChain->CompareWithSnapshot(nullptr),
-        "Image rendered by the test differs from the reference image");
+    if (Channel >= 0)
+    {
+        ComparisonFailureImageGuard FailureImageGuard;
+        EXPECT_NONFATAL_FAILURE(
+            pTestingSwapChain->CompareWithSnapshot(nullptr),
+            "Image rendered by the test differs from the reference image");
+    }
+    else
+    {
+        pTestingSwapChain->CompareWithSnapshot(nullptr);
+    }
 }
 
 TEST(TestingSwapChainBaseTest, LoadsPNGAsRGBA8)
@@ -410,37 +432,47 @@ TEST(TestingSwapChainBaseTest, ImageComparisonIgnoresAlphaDifference)
 
 TEST(TestingSwapChainBaseTest, ReportsSnapshotRedComparisonFailure)
 {
-    TestSnapshotComparisonFailure(0);
+    TestSnapshotComparison(0);
 }
 
 TEST(TestingSwapChainBaseTest, ReportsSnapshotGreenComparisonFailure)
 {
-    TestSnapshotComparisonFailure(1);
+    TestSnapshotComparison(1);
 }
 
 TEST(TestingSwapChainBaseTest, ReportsSnapshotBlueComparisonFailure)
 {
-    TestSnapshotComparisonFailure(2);
+    TestSnapshotComparison(2);
 }
 
 TEST(TestingSwapChainBaseTest, ReportsSnapshotAlphaComparisonFailure)
 {
-    TestSnapshotComparisonFailure(3);
+    TestSnapshotComparison(3);
+}
+
+TEST(TestingSwapChainBaseTest, AcceptsMatchingSnapshot)
+{
+    TestSnapshotComparison(-1);
 }
 
 TEST(TestingSwapChainBaseTest, ReportsImageRedComparisonFailure)
 {
-    TestImageComparisonFailure(0);
+    TestImageComparison(0);
 }
 
 TEST(TestingSwapChainBaseTest, ReportsImageGreenComparisonFailure)
 {
-    TestImageComparisonFailure(1);
+    TestImageComparison(1);
 }
 
 TEST(TestingSwapChainBaseTest, ReportsImageBlueComparisonFailure)
 {
-    TestImageComparisonFailure(2);
+    TestImageComparison(2);
+}
+
+TEST(TestingSwapChainBaseTest, AcceptsMatchingImage)
+{
+    TestImageComparison(-1);
 }
 
 #endif

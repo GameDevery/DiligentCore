@@ -272,7 +272,7 @@ void TestingSwapChainVk::EndRenderPass(VkCommandBuffer vkCmdBuffer)
 
 void TestingSwapChainVk::TakeSnapshot(ITexture* pCopyFrom)
 {
-    m_ReferenceSource = ReferenceSource::Snapshot;
+    m_CompareAlpha = true;
 
     TestingEnvironmentVk* pEnv = TestingEnvironmentVk::GetInstance();
 

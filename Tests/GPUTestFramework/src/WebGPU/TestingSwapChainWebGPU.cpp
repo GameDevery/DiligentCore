@@ -175,7 +175,7 @@ void TestingSwapChainWebGPU::ReleaseBackendResources()
 
 void TestingSwapChainWebGPU::TakeSnapshot(ITexture* pCopyFrom)
 {
-    m_ReferenceSource = ReferenceSource::Snapshot;
+    m_CompareAlpha = true;
 
     RefCntAutoPtr<IDeviceContextWebGPU> pContextWebGPU{m_pContext, IID_DeviceContextWebGPU};
 

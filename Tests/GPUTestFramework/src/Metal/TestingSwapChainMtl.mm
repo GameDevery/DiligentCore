@@ -87,7 +87,7 @@ void TestingSwapChainMtl::ReleaseBackendResources()
 
 void TestingSwapChainMtl::TakeSnapshot(ITexture* pCopyFrom)
 {
-    m_ReferenceSource = ReferenceSource::Snapshot;
+    m_CompareAlpha = true;
 
     auto mtlCommandQueue = m_pEnvironment->GetMtlCommandQueue();
 

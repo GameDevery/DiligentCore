@@ -114,7 +114,7 @@ void TestingSwapChainD3D11::ResizeBackendResources()
 
 void TestingSwapChainD3D11::TakeSnapshot(ITexture* pCopyFrom)
 {
-    m_ReferenceSource = ReferenceSource::Snapshot;
+    m_CompareAlpha = true;
 
     ID3D11Texture2D* pSrcRT = m_pd3d11RenderTarget;
     if (pCopyFrom != nullptr)
