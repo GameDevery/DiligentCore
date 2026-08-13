@@ -49,6 +49,33 @@ void ClearRenderTargetReference(IRenderDevice* pDevice,
 namespace
 {
 
+class ComparisonFailureImageGuard
+{
+public:
+    ComparisonFailureImageGuard() :
+        m_FileName{GetTestImageComparisonFailureFileName()}
+    {}
+
+    ~ComparisonFailureImageGuard()
+    {
+        if (!m_FileName.empty())
+            FileSystem::DeleteFile(m_FileName.c_str());
+    }
+
+    // clang-format off
+    ComparisonFailureImageGuard(const ComparisonFailureImageGuard&)            = delete;
+    ComparisonFailureImageGuard& operator=(const ComparisonFailureImageGuard&) = delete;
+    // clang-format on
+
+    const std::string& GetFileName() const
+    {
+        return m_FileName;
+    }
+
+private:
+    std::string m_FileName;
+};
+
 TEST(TestingSwapChainBaseTest, ExactComparisonAcceptsIdenticalImages)
 {
     constexpr std::array<Uint8, 8> Pixels{
@@ -81,8 +108,14 @@ TEST(TestingSwapChainBaseTest, ToleratesConfiguredImageDifferences)
         255,
     };
     constexpr std::array<Uint8, 8> Actual{
-        12, 20, 30, 255, // Within the per-channel threshold.
-        50, 50, 60, 255, // One bad pixel allowed by the ratio.
+        12,
+        20,
+        30,
+        255, // Within the per-channel threshold.
+        50,
+        50,
+        60,
+        255, // One bad pixel allowed by the ratio.
     };
 
     TestImageComparisonAttribs ComparisonAttribs;
@@ -90,39 +123,14 @@ TEST(TestingSwapChainBaseTest, ToleratesConfiguredImageDifferences)
     ComparisonAttribs.MaxBadPixelRatio = 0.5f;
 
     std::unordered_map<std::string, int> FailureCounters;
+    ComparisonFailureImageGuard          FailureImageGuard;
     CompareTestImages(Reference.data(), 8, Actual.data(), 8, 2, 1,
                       TEX_FORMAT_RGBA8_UNORM, FailureCounters, ComparisonAttribs);
-    EXPECT_TRUE(FailureCounters.empty());
+    EXPECT_EQ(FailureCounters.size(), 1u);
+    EXPECT_TRUE(FileSystem::FileExists(FailureImageGuard.GetFileName().c_str()));
 }
 
 #if !PLATFORM_WEB
-
-class ComparisonFailureImageGuard
-{
-public:
-    ComparisonFailureImageGuard() :
-        m_FileName{GetTestImageComparisonFailureFileName()}
-    {}
-
-    ~ComparisonFailureImageGuard()
-    {
-        if (!m_FileName.empty())
-            FileSystem::DeleteFile(m_FileName.c_str());
-    }
-
-    // clang-format off
-    ComparisonFailureImageGuard(const ComparisonFailureImageGuard&)            = delete;
-    ComparisonFailureImageGuard& operator=(const ComparisonFailureImageGuard&) = delete;
-    // clang-format on
-
-    const std::string& GetFileName() const
-    {
-        return m_FileName;
-    }
-
-private:
-    std::string m_FileName;
-};
 
 TEST(TestingSwapChainBaseTest, ReportsOnlyNonEmptyDifferenceCategories)
 {
@@ -152,12 +160,16 @@ TEST(TestingSwapChainBaseTest, ReportsOnlyNonEmptyDifferenceCategories)
 
     testing::internal::CaptureStdout();
     std::unordered_map<std::string, int> FailureCounters;
+    ComparisonFailureImageGuard          FailureImageGuard;
     CompareTestImages(Reference.data(), 8, Actual.data(), 8, 2, 1,
                       TEX_FORMAT_RGBA8_UNORM, FailureCounters, ComparisonAttribs);
     const std::string Output = testing::internal::GetCapturedStdout();
 
-    EXPECT_NE(Output.find("1 of 2 pixels differ but remain within the per-channel error threshold 2"), std::string::npos);
+    EXPECT_NE(Output.find("1 of 2 pixels differ but remain within the per-channel error threshold 2; "
+                          "maximum channel error is 2"),
+              std::string::npos);
     EXPECT_EQ(Output.find("exceed the threshold"), std::string::npos);
+    EXPECT_TRUE(FileSystem::FileExists(FailureImageGuard.GetFileName().c_str()));
 }
 
 TEST(TestingSwapChainBaseTest, AddsRenderDeviceTypeToFailureImageName)
@@ -222,7 +234,8 @@ TEST(TestingSwapChainBaseTest, ReportsToleratedAndBadPixelStatistics)
         CompareTestImages(Reference.data(), 16, Actual.data(), 16, 4, 1,
                           TEX_FORMAT_RGBA8_UNORM, FailureCounters, ComparisonAttribs),
         "1 of 4 pixels differ but remain within the per-channel error threshold 2; maximum channel error is 2\n"
-        "1 of 4 pixels (25%) exceed the threshold; maximum channel error is 23");
+        "1 of 4 pixels (25%) exceed the threshold; maximum channel error is 23; "
+        "up to 0 bad pixels are allowed");
 }
 
 void TestSnapshotComparison(Int32 Channel)

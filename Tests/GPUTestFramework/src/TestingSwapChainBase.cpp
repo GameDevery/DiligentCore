@@ -1,5 +1,5 @@
 /*
- *  Copyright 2019-2022 Diligent Graphics LLC
+ *  Copyright 2019-2026 Diligent Graphics LLC
  *  Copyright 2015-2019 Egor Yusov
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -224,7 +224,9 @@ void CompareTestImages(const Uint8*                          pReferencePixels,
     if (ToleratedPixelCount == 0 && BadPixelCount == 0)
         return;
 
-    const Uint64 PixelCount = Uint64{Width} * Height;
+    const Uint64 PixelCount       = Uint64{Width} * Height;
+    const Uint64 MaxBadPixelCount = static_cast<Uint64>(
+        static_cast<double>(PixelCount) * ComparisonAttribs.MaxBadPixelRatio);
 
     std::ostringstream Statistics;
     if (ToleratedPixelCount > 0)
@@ -241,17 +243,16 @@ void CompareTestImages(const Uint8*                          pReferencePixels,
 
         const double BadPixelPercentage = static_cast<double>(BadPixelCount) / static_cast<double>(PixelCount) * 100.0;
         Statistics << BadPixelCount << " of " << PixelCount << " pixels (" << BadPixelPercentage
-                   << "%) exceed the threshold; maximum channel error is " << MaxBadChannelError;
+                   << "%) exceed the threshold; maximum channel error is " << MaxBadChannelError
+                   << "; up to " << MaxBadPixelCount << " bad pixels are allowed";
     }
 
-    if (static_cast<double>(BadPixelCount) <=
-        static_cast<double>(PixelCount) * ComparisonAttribs.MaxBadPixelRatio)
-    {
-        LOG_WARNING_MESSAGE("Image rendered by the test differs from the reference image, but is within the configured tolerance:\n",
-                            Statistics.str());
-        return;
-    }
+    const bool ComparisonFailed =
+        static_cast<double>(BadPixelCount) >
+        static_cast<double>(PixelCount) * ComparisonAttribs.MaxBadPixelRatio;
 
+    // Keep a visual record of every non-identical comparison, including
+    // differences accepted by the configured thresholds.
     {
         auto ReportImageStride = (Width * 2) * 3;
 
@@ -282,9 +283,18 @@ void CompareTestImages(const Uint8*                          pReferencePixels,
         {
             LOG_ERROR_MESSAGE("Failed to write ", FileName);
         }
+        ++FailureCounter;
+    }
+
+    if (!ComparisonFailed)
+    {
+        LOG_WARNING_MESSAGE("Image rendered by the test differs from the reference image, but is within the configured tolerance:\n",
+                            Statistics.str());
+    }
+    else
+    {
         ADD_FAILURE() << "Image rendered by the test differs from the reference image:\n"
                       << Statistics.str();
-        ++FailureCounter;
     }
 }
 
