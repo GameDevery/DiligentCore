@@ -128,7 +128,7 @@ TEST(TestingSwapChainBaseTest, ToleratesConfiguredImageDifferences)
                       TEX_FORMAT_RGBA8_UNORM, DifferenceCounters, ComparisonAttribs);
     EXPECT_EQ(DifferenceCounters.size(), 1u);
     EXPECT_TRUE(FileSystem::FileExists(ImageGuard.GetFileName().c_str()));
-    EXPECT_NE(ImageGuard.GetFileName().find("_DIFF_OK"), std::string::npos);
+    EXPECT_NE(ImageGuard.GetFileName().find("_diff_OK"), std::string::npos);
 }
 
 #if !PLATFORM_WEB
@@ -185,7 +185,7 @@ TEST(TestingSwapChainBaseTest, AddsRenderDeviceTypeToDifferenceImageName)
                           TEX_FORMAT_RGBA8_UNORM, DifferenceCounters),
         "Image rendered by the test differs from the reference image");
     EXPECT_TRUE(FileSystem::FileExists(ImageGuard.GetFileName().c_str()));
-    EXPECT_NE(ImageGuard.GetFileName().find("_DIFF_FAIL"), std::string::npos);
+    EXPECT_NE(ImageGuard.GetFileName().find("_diff_FAIL"), std::string::npos);
 }
 
 TEST(TestingSwapChainBaseTest, ReportsToleratedAndBadPixelStatistics)

@@ -128,7 +128,7 @@ std::string GetTestImageDifferenceFileName(bool ComparisonPassed, Uint32 Differe
     FileName += ValidateName(TestInfo->name());
     FileName += '_';
     FileName += GetRenderDeviceTypeShortString(pEnvironment->GetDevice()->GetDeviceInfo().Type);
-    FileName += ComparisonPassed ? "_DIFF_OK" : "_DIFF_FAIL";
+    FileName += ComparisonPassed ? "_diff_OK" : "_diff_FAIL";
     if (DifferenceIndex > 0)
         FileName += std::to_string(DifferenceIndex);
     FileName += "_.png";
