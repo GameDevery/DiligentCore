@@ -65,7 +65,7 @@ void CompareTestImages(const Uint8*                          pReferencePixels,
                        Uint32                                Width,
                        Uint32                                Height,
                        TEXTURE_FORMAT                        Format,
-                       std::unordered_map<std::string, int>& FailureCounters,
+                       std::unordered_map<std::string, int>& DifferenceCounters,
                        const TestImageComparisonAttribs&     ComparisonAttribs = {},
                        bool                                  CompareAlpha      = true);
 
@@ -75,8 +75,9 @@ bool LoadTestImage(const char*         FilePath,
                    Uint32&             Width,
                    Uint32&             Height);
 
-/// Returns the backend-qualified file name for a comparison failure image.
-std::string GetTestImageComparisonFailureFileName(Uint32 FailureIndex = 0);
+/// Returns the backend-qualified file name for a comparison difference image.
+std::string GetTestImageDifferenceFileName(bool   ComparisonPassed,
+                                           Uint32 DifferenceIndex = 0);
 
 /// Writes the image to a PNG file. Alpha is omitted by default.
 void DumpTestImage(const Uint8*   pPixels,
@@ -368,7 +369,7 @@ public:
 
         m_pContext->MapTextureSubresource(m_pStagingTexture, 0, 0, MAP_READ, MapFlag, nullptr, MapData);
         CompareTestImages(m_ReferenceData.data(), m_ReferenceDataPitch, static_cast<const Uint8*>(MapData.pData), MapData.Stride,
-                          m_SwapChainDesc.Width, m_SwapChainDesc.Height, m_SwapChainDesc.ColorBufferFormat, m_FailureCounters,
+                          m_SwapChainDesc.Width, m_SwapChainDesc.Height, m_SwapChainDesc.ColorBufferFormat, m_DifferenceCounters,
                           m_ImageComparisonAttribs, m_CompareAlpha);
 
         m_pContext->UnmapTextureSubresource(m_pStagingTexture, 0, 0);
@@ -456,7 +457,7 @@ protected:
     RefCntAutoPtr<ITextureView>   m_pDSV;
     RefCntAutoPtr<ITexture>       m_pStagingTexture;
 
-    std::unordered_map<std::string, int> m_FailureCounters;
+    std::unordered_map<std::string, int> m_DifferenceCounters;
 
     std::vector<Uint8> m_ReferenceData;
     Uint32             m_ReferenceDataPitch = 0;

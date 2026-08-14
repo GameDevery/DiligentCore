@@ -49,22 +49,22 @@ void ClearRenderTargetReference(IRenderDevice* pDevice,
 namespace
 {
 
-class ComparisonFailureImageGuard
+class DifferenceImageGuard
 {
 public:
-    ComparisonFailureImageGuard() :
-        m_FileName{GetTestImageComparisonFailureFileName()}
+    explicit DifferenceImageGuard(bool ComparisonPassed) :
+        m_FileName{GetTestImageDifferenceFileName(ComparisonPassed)}
     {}
 
-    ~ComparisonFailureImageGuard()
+    ~DifferenceImageGuard()
     {
         if (!m_FileName.empty())
             FileSystem::DeleteFile(m_FileName.c_str());
     }
 
     // clang-format off
-    ComparisonFailureImageGuard(const ComparisonFailureImageGuard&)            = delete;
-    ComparisonFailureImageGuard& operator=(const ComparisonFailureImageGuard&) = delete;
+    DifferenceImageGuard(const DifferenceImageGuard&)            = delete;
+    DifferenceImageGuard& operator=(const DifferenceImageGuard&) = delete;
     // clang-format on
 
     const std::string& GetFileName() const
@@ -89,10 +89,10 @@ TEST(TestingSwapChainBaseTest, ExactComparisonAcceptsIdenticalImages)
         8,
     };
 
-    std::unordered_map<std::string, int> FailureCounters;
+    std::unordered_map<std::string, int> DifferenceCounters;
     CompareTestImages(Pixels.data(), 8, Pixels.data(), 8, 2, 1,
-                      TEX_FORMAT_RGBA8_UNORM, FailureCounters);
-    EXPECT_TRUE(FailureCounters.empty());
+                      TEX_FORMAT_RGBA8_UNORM, DifferenceCounters);
+    EXPECT_TRUE(DifferenceCounters.empty());
 }
 
 TEST(TestingSwapChainBaseTest, ToleratesConfiguredImageDifferences)
@@ -122,12 +122,13 @@ TEST(TestingSwapChainBaseTest, ToleratesConfiguredImageDifferences)
     ComparisonAttribs.MaxChannelError  = 2;
     ComparisonAttribs.MaxBadPixelRatio = 0.5f;
 
-    std::unordered_map<std::string, int> FailureCounters;
-    ComparisonFailureImageGuard          FailureImageGuard;
+    std::unordered_map<std::string, int> DifferenceCounters;
+    DifferenceImageGuard                 ImageGuard{true};
     CompareTestImages(Reference.data(), 8, Actual.data(), 8, 2, 1,
-                      TEX_FORMAT_RGBA8_UNORM, FailureCounters, ComparisonAttribs);
-    EXPECT_EQ(FailureCounters.size(), 1u);
-    EXPECT_TRUE(FileSystem::FileExists(FailureImageGuard.GetFileName().c_str()));
+                      TEX_FORMAT_RGBA8_UNORM, DifferenceCounters, ComparisonAttribs);
+    EXPECT_EQ(DifferenceCounters.size(), 1u);
+    EXPECT_TRUE(FileSystem::FileExists(ImageGuard.GetFileName().c_str()));
+    EXPECT_NE(ImageGuard.GetFileName().find("_DIFF_OK"), std::string::npos);
 }
 
 #if !PLATFORM_WEB
@@ -159,31 +160,32 @@ TEST(TestingSwapChainBaseTest, ReportsOnlyNonEmptyDifferenceCategories)
     ComparisonAttribs.MaxChannelError = 2;
 
     testing::internal::CaptureStdout();
-    std::unordered_map<std::string, int> FailureCounters;
-    ComparisonFailureImageGuard          FailureImageGuard;
+    std::unordered_map<std::string, int> DifferenceCounters;
+    DifferenceImageGuard                 ImageGuard{true};
     CompareTestImages(Reference.data(), 8, Actual.data(), 8, 2, 1,
-                      TEX_FORMAT_RGBA8_UNORM, FailureCounters, ComparisonAttribs);
+                      TEX_FORMAT_RGBA8_UNORM, DifferenceCounters, ComparisonAttribs);
     const std::string Output = testing::internal::GetCapturedStdout();
 
     EXPECT_NE(Output.find("1 of 2 pixels differ but remain within the per-channel error threshold 2; "
                           "maximum channel error is 2"),
               std::string::npos);
     EXPECT_EQ(Output.find("exceed the threshold"), std::string::npos);
-    EXPECT_TRUE(FileSystem::FileExists(FailureImageGuard.GetFileName().c_str()));
+    EXPECT_TRUE(FileSystem::FileExists(ImageGuard.GetFileName().c_str()));
 }
 
-TEST(TestingSwapChainBaseTest, AddsRenderDeviceTypeToFailureImageName)
+TEST(TestingSwapChainBaseTest, AddsRenderDeviceTypeToDifferenceImageName)
 {
     constexpr std::array<Uint8, 4> Reference{255, 255, 255, 255};
     constexpr std::array<Uint8, 4> Actual{0, 255, 255, 255};
 
-    std::unordered_map<std::string, int> FailureCounters;
-    ComparisonFailureImageGuard          FailureImageGuard;
+    std::unordered_map<std::string, int> DifferenceCounters;
+    DifferenceImageGuard                 ImageGuard{false};
     EXPECT_NONFATAL_FAILURE(
         CompareTestImages(Reference.data(), 4, Actual.data(), 4, 1, 1,
-                          TEX_FORMAT_RGBA8_UNORM, FailureCounters),
+                          TEX_FORMAT_RGBA8_UNORM, DifferenceCounters),
         "Image rendered by the test differs from the reference image");
-    EXPECT_TRUE(FileSystem::FileExists(FailureImageGuard.GetFileName().c_str()));
+    EXPECT_TRUE(FileSystem::FileExists(ImageGuard.GetFileName().c_str()));
+    EXPECT_NE(ImageGuard.GetFileName().find("_DIFF_FAIL"), std::string::npos);
 }
 
 TEST(TestingSwapChainBaseTest, ReportsToleratedAndBadPixelStatistics)
@@ -228,11 +230,11 @@ TEST(TestingSwapChainBaseTest, ReportsToleratedAndBadPixelStatistics)
     TestImageComparisonAttribs ComparisonAttribs;
     ComparisonAttribs.MaxChannelError = 2;
 
-    std::unordered_map<std::string, int> FailureCounters;
-    ComparisonFailureImageGuard          FailureImageGuard;
+    std::unordered_map<std::string, int> DifferenceCounters;
+    DifferenceImageGuard                 ImageGuard{false};
     EXPECT_NONFATAL_FAILURE(
         CompareTestImages(Reference.data(), 16, Actual.data(), 16, 4, 1,
-                          TEX_FORMAT_RGBA8_UNORM, FailureCounters, ComparisonAttribs),
+                          TEX_FORMAT_RGBA8_UNORM, DifferenceCounters, ComparisonAttribs),
         "1 of 4 pixels differ but remain within the per-channel error threshold 2; maximum channel error is 2\n"
         "1 of 4 pixels (25%) exceed the threshold; maximum channel error is 23; "
         "up to 0 bad pixels are allowed");
@@ -268,7 +270,7 @@ void TestSnapshotComparison(Int32 Channel)
 
     if (Channel >= 0)
     {
-        ComparisonFailureImageGuard FailureImageGuard;
+        DifferenceImageGuard ImageGuard{false};
         EXPECT_NONFATAL_FAILURE(
             pTestingSwapChain->CompareWithSnapshot(nullptr),
             "Image rendered by the test differs from the reference image");
@@ -314,7 +316,7 @@ void TestImageComparison(Int32 Channel)
 
     if (Channel >= 0)
     {
-        ComparisonFailureImageGuard FailureImageGuard;
+        DifferenceImageGuard ImageGuard{false};
         EXPECT_NONFATAL_FAILURE(
             pTestingSwapChain->CompareWithSnapshot(nullptr),
             "Image rendered by the test differs from the reference image");

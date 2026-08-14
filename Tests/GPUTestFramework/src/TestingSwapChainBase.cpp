@@ -106,7 +106,7 @@ bool LoadTestImage(const char*         FilePath,
     return true;
 }
 
-std::string GetTestImageComparisonFailureFileName(Uint32 FailureIndex)
+std::string GetTestImageDifferenceFileName(bool ComparisonPassed, Uint32 DifferenceIndex)
 {
     const auto* const            TestInfo     = ::testing::UnitTest::GetInstance()->current_test_info();
     GPUTestingEnvironment* const pEnvironment = GPUTestingEnvironment::GetInstance();
@@ -128,9 +128,9 @@ std::string GetTestImageComparisonFailureFileName(Uint32 FailureIndex)
     FileName += ValidateName(TestInfo->name());
     FileName += '_';
     FileName += GetRenderDeviceTypeShortString(pEnvironment->GetDevice()->GetDeviceInfo().Type);
-    FileName += "_FAIL";
-    if (FailureIndex > 0)
-        FileName += std::to_string(FailureIndex);
+    FileName += ComparisonPassed ? "_DIFF_OK" : "_DIFF_FAIL";
+    if (DifferenceIndex > 0)
+        FileName += std::to_string(DifferenceIndex);
     FileName += "_.png";
     return FileName;
 }
@@ -142,7 +142,7 @@ void CompareTestImages(const Uint8*                          pReferencePixels,
                        Uint32                                Width,
                        Uint32                                Height,
                        TEXTURE_FORMAT                        Format,
-                       std::unordered_map<std::string, int>& FailureCounters,
+                       std::unordered_map<std::string, int>& DifferenceCounters,
                        const TestImageComparisonAttribs&     ComparisonAttribs,
                        bool                                  CompareAlpha)
 {
@@ -276,14 +276,14 @@ void CompareTestImages(const Uint8*                          pReferencePixels,
                 }
             }
         }
-        const std::string CounterKey     = GetTestImageComparisonFailureFileName();
-        auto&             FailureCounter = FailureCounters[CounterKey];
-        const std::string FileName       = GetTestImageComparisonFailureFileName(static_cast<Uint32>(FailureCounter));
+        const std::string CounterKey        = GetTestImageDifferenceFileName(!ComparisonFailed);
+        auto&             DifferenceCounter = DifferenceCounters[CounterKey];
+        const std::string FileName          = GetTestImageDifferenceFileName(!ComparisonFailed, static_cast<Uint32>(DifferenceCounter));
         if (stbi_write_png(FileName.c_str(), Width * 2, Height * 2, 3, ReportImage.data(), (Width * 2) * 3) == 0)
         {
             LOG_ERROR_MESSAGE("Failed to write ", FileName);
         }
-        ++FailureCounter;
+        ++DifferenceCounter;
     }
 
     if (!ComparisonFailed)
