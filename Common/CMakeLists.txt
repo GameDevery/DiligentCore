@@ -29,6 +29,7 @@ set(INTERFACE
     interface/LRUCache.hpp
     interface/MPSCQueue.hpp
     interface/FixedLinearAllocator.hpp
+    interface/DynamicBitSet.hpp
     interface/DynamicLinearAllocator.hpp
     interface/EngineMemory.h
     interface/MemoryFileStream.hpp
